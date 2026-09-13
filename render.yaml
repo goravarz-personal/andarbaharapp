@@ -13,7 +13,11 @@ services:
     # Closest region to India. If Render will not accept it on your plan,
     # delete this line and it will use the default.
     region: singapore
-    buildCommand: npm install --legacy-peer-deps && npm run build --workspace server
+    # --include=dev is not optional here: NODE_ENV below is set during the
+    # build as well as at runtime, and npm treats that as "skip
+    # devDependencies" - which would leave the compiler and the type
+    # definitions uninstalled.
+    buildCommand: npm install --legacy-peer-deps --include=dev && npm run build --workspace server
     startCommand: npm run start --workspace server
     # Render restarts the service if this stops answering.
     healthCheckPath: /api/health
@@ -49,7 +53,7 @@ services:
   - type: web
     name: aadarbahar-app
     runtime: static
-    buildCommand: npm install --legacy-peer-deps && npm run build:web --workspace mobile
+    buildCommand: npm install --legacy-peer-deps --include=dev && npm run build:web --workspace mobile
     staticPublishPath: ./mobile/dist
     envVars:
       # Points the built app at the API above. Render fills in the real

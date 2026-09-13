@@ -1,8 +1,13 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "module": "CommonJS",
-    "moduleResolution": "node",
+    // nodenext, not the old "node"/"node10" pair: that resolution mode was
+    // removed in TypeScript 7, and npm workspace hoisting means this is not
+    // always compiled by the TypeScript this package asks for. These values
+    // are valid from TS 4.7 through 7, and still emit CommonJS because
+    // package.json does not declare "type": "module".
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
     "lib": ["ES2022"],
     "outDir": "dist",
     "rootDir": ".",
