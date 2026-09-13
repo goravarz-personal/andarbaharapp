@@ -56,13 +56,16 @@ services:
     buildCommand: npm install --legacy-peer-deps --include=dev && npm run build:web --workspace mobile
     staticPublishPath: ./mobile/dist
     envVars:
-      # Points the built app at the API above. Render fills in the real
-      # hostname once the API service exists.
+      # The API's PUBLIC address, written out in full and deliberately not
+      # derived with fromService: that returns Render's internal hostname
+      # (just "aadarbahar-api"), which only resolves between services inside
+      # Render. This app runs in a browser on someone's phone, so it needs the
+      # address the outside world can reach.
+      #
+      # If you rename the API service, or Render gives it a different URL
+      # because the name was taken, change this to match and redeploy.
       - key: EXPO_PUBLIC_API_URL
-        fromService:
-          name: aadarbahar-api
-          type: web
-          property: host
+        value: https://aadarbahar-api.onrender.com
     routes:
       # The app handles its own navigation, so every address has to be served
       # the same page, or refreshing on any screen would 404.
