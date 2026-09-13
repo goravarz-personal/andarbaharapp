@@ -1,0 +1,145 @@
+// AadarBaharApp data model.
+//
+// Money is always stored as an integer number of MINOR units (paise for INR).
+// Never store money as a float - 0.1 + 0.2 problems turn into arguments at the
+// table. Format for display only at the edges.
+//
+// SQLite does not support Prisma enums, so enum-ish columns are Strings that
+// are validated with zod at the API boundary (see src/types/enums.ts).
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+/// A person. Every player has their own login; role decides what they can change.
+model User {
+  id                 String   @id @default(cuid())
+  username           String   @unique
+  displayName        String
+  email              String?  @unique
+  phone              String?
+  passwordHash       String
+  /// "ADMIN" | "PLAYER"
+  role               String   @default("PLAYER")
+  isActive           Boolean  @default(true)
+  mustChangePassword Boolean  @default(false)
+  /// Bumped on password change / deactivation so old JWTs stop working.
+  tokenVersion       Int      @default(0)
+  avatarColor        String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  gameEntries       GamePlayer[]
+  createdGames      Game[]         @relation("GameCreatedBy")
+  expensesPaid      Expense[]      @relation("ExpensePaidBy")
+  expenseShares     ExpenseShare[]
+  settlementsOwed   Settlement[]   @relation("SettlementFrom")
+  settlementsOwedTo Settlement[]   @relation("SettlementTo")
+
+  @@index([role])
+}
+
+/// One game night.
+model Game {
+  id          String   @id @default(cuid())
+  playedOn    DateTime
+  title       String?
+  location    String?
+  notes       String?
+  /// "OPEN" | "SETTLED"
+  status      String   @default("OPEN")
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  createdBy   User         @relation("GameCreatedBy", fields: [createdById], references: [id])
+  players     GamePlayer[]
+  expenses    Expense[]
+  settlements Settlement[]
+
+  @@index([playedOn])
+  @@index([status])
+}
+
+/// A player's seat in one game: what they put in, what they took out.
+model GamePlayer {
+  id       String  @id @default(cuid())
+  gameId   String
+  userId   String
+  buyIn    Int     @default(0)
+  cashOut  Int     @default(0)
+  isWinner Boolean @default(false)
+  notes    String?
+
+  game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([gameId, userId])
+  @@index([userId])
+}
+
+/// Dinner or any other cost attached to a game.
+model Expense {
+  id        String @id @default(cuid())
+  gameId    String
+  /// "DINNER" | "OTHER"
+  category  String @default("OTHER")
+  label     String
+  amount    Int
+  paidById  String
+  /// "EQUAL" (split across seated players) | "CUSTOM" (explicit shares) | "PAYER" (payer treats everyone)
+  splitMode String @default("EQUAL")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  game   Game           @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  paidBy User           @relation("ExpensePaidBy", fields: [paidById], references: [id])
+  shares ExpenseShare[]
+
+  @@index([gameId])
+}
+
+/// Who owes what slice of an expense. Shares always add up to Expense.amount.
+model ExpenseShare {
+  id        String @id @default(cuid())
+  expenseId String
+  userId    String
+  amount    Int
+
+  expense Expense @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([expenseId, userId])
+}
+
+/// "X pays Y this much." Generated when a game is settled, or added by hand.
+model Settlement {
+  id             String    @id @default(cuid())
+  gameId         String?
+  fromUserId     String
+  toUserId       String
+  amount         Int
+  /// "PENDING" | "PAID"
+  status         String    @default("PENDING")
+  /// "AUTO" (derived from a game) | "MANUAL" (recorded by hand)
+  kind           String    @default("AUTO")
+  note           String?
+  paidAt         DateTime?
+  markedPaidById String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  game     Game? @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  fromUser User  @relation("SettlementFrom", fields: [fromUserId], references: [id], onDelete: Cascade)
+  toUser   User  @relation("SettlementTo", fields: [toUserId], references: [id], onDelete: Cascade)
+
+  @@index([gameId])
+  @@index([fromUserId, status])
+  @@index([toUserId, status])
+}
