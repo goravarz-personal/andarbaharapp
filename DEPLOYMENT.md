@@ -163,6 +163,14 @@ You should see `{"ok":true,...}`. If you see an error instead, go to the Render
 dashboard, open `aadarbahar-api`, and read the **Logs** tab — the message there
 usually says exactly what is missing.
 
+**The app loads, but every screen says it cannot reach the server.**
+The app is built with the API's address baked in, and that did not get through.
+On the Render dashboard open `aadarbahar-app` → **Environment** and check
+`EXPO_PUBLIC_API_URL` is there and holds your API's hostname (for example
+`aadarbahar-api.onrender.com`). If it is missing, add it by hand, then
+**Manual Deploy** → **Clear build cache & deploy**. The address is only read at
+build time, so the app has to be rebuilt for a change to take effect.
+
 **The API keeps restarting.**
 Almost always the database. Check `DATABASE_URL` in Render's **Environment**
 tab matches what Neon shows you, including the `?sslmode=require` at the end.
