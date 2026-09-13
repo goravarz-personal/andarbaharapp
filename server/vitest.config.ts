@@ -1,15 +1,16 @@
 import { defineConfig } from 'vitest/config';
+import { TEST_DATABASE_URL } from './tests/db-url';
 
 export default defineConfig({
   test: {
-    // SQLite plus a shared schema means tests must not race each other.
+    // One shared database means tests must not race each other.
     pool: 'forks',
     poolOptions: { forks: { singleFork: true } },
     fileParallelism: false,
     globalSetup: './tests/global-setup.ts',
     env: {
       NODE_ENV: 'test',
-      DATABASE_URL: 'file:./test.db',
+      DATABASE_URL: TEST_DATABASE_URL,
       JWT_SECRET: 'test-secret-that-is-definitely-long-enough-123456',
       ADMIN_USERNAME: 'admin',
       ADMIN_PASSWORD: 'admin123',

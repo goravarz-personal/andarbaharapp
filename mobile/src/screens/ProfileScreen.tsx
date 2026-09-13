@@ -16,6 +16,7 @@ import {
   SectionHeader,
   TextField,
 } from '../components';
+import { InstallCard } from '../components/InstallCard';
 import { useApiQuery } from '../state/useApiQuery';
 import { useAuth } from '../state/AuthContext';
 import { formatMoney } from '../utils/money';
@@ -133,6 +134,8 @@ export function ProfileScreen() {
           <Row title="Email" subtitle={user?.email ?? 'Not set'} last />
         </Card>
       )}
+
+      <InstallCard compact />
 
       <SectionHeader title="App" />
       <Card padded={false} style={styles.rows}>

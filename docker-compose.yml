@@ -1,0 +1,27 @@
+# Postgres for local development and for running the tests.
+#
+#   docker compose up -d
+#
+# The hosted deployment uses a managed database instead - see DEPLOYMENT.md.
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: aadarbahar-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: aadar
+      POSTGRES_PASSWORD: aadar
+      POSTGRES_DB: aadarbahar
+    ports:
+      - '5432:5432'
+    volumes:
+      - aadarbahar-data:/var/lib/postgresql/data
+      - ./scripts/init-test-db.sql:/docker-entrypoint-initdb.d/init-test-db.sql:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U aadar -d aadarbahar']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  aadarbahar-data:

@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    // Only src is compiled for production, so the entry point lands at
+    // dist/index.js rather than dist/src/index.js. Tests and the seed script
+    // are still type-checked by the base config; they just run through tsx.
+    "rootDir": "src",
+    "sourceMap": false
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules", "dist", "tests", "prisma"]
+}

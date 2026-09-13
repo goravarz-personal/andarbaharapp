@@ -8,14 +8,15 @@
     "mobile"
   ],
   "scripts": {
-    "setup": "npm install --legacy-peer-deps && npm run db:setup --workspace server",
     "server": "npm run dev --workspace server",
     "mobile": "npm run start --workspace mobile",
     "db:setup": "npm run db:setup --workspace server",
     "db:seed": "npm run db:seed --workspace server",
     "test": "npm run test --workspace server",
     "typecheck": "npm run typecheck --workspace server && npm run typecheck --workspace mobile",
-    "build": "npm run build --workspace server"
+    "build": "npm run build --workspace server",
+    "db:migrate": "npm run db:migrate --workspace server",
+    "build:web": "npm run build:web --workspace mobile"
   },
   "engines": {
     "node": ">=20"

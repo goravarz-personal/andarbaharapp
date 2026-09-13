@@ -1,0 +1,76 @@
+# Render Blueprint - deploys the whole thing in one go.
+#
+# Render reads this file when you point it at the repository, and creates both
+# pieces: the API, and the app people open on their phones. Full walkthrough in
+# DEPLOYMENT.md.
+
+services:
+  # --- The API and the database it talks to ---------------------------------
+  - type: web
+    name: aadarbahar-api
+    runtime: node
+    plan: free
+    # Closest region to India. If Render will not accept it on your plan,
+    # delete this line and it will use the default.
+    region: singapore
+    buildCommand: npm install --legacy-peer-deps && npm run build --workspace server
+    startCommand: npm run start --workspace server
+    # Render restarts the service if this stops answering.
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # Paste your database connection string here in the Render dashboard.
+      # sync:false means Render asks you for it rather than storing it in git.
+      - key: DATABASE_URL
+        sync: false
+      # Render generates a long random value. Never needs to be seen by anyone.
+      - key: JWT_SECRET
+        generateValue: true
+      - key: ADMIN_USERNAME
+        value: admin
+      # Render asks you to choose this when you deploy.
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: ADMIN_DISPLAY_NAME
+        value: Game Admin
+      # Render puts exactly one proxy in front of the service. Rate limiting
+      # needs to know, or every request looks like it came from Render itself.
+      - key: TRUST_PROXY
+        value: '1'
+      # Sign-in uses bearer tokens rather than cookies, so a permissive origin
+      # exposes nothing. Narrow it to your app's address if you prefer.
+      - key: CORS_ORIGIN
+        value: '*'
+
+  # --- The app itself, as a static site on Render's CDN ---------------------
+  # Kept separate from the API on purpose: it costs nothing, it never sleeps,
+  # and it means the app still opens instantly while a free-plan API wakes up.
+  - type: web
+    name: aadarbahar-app
+    runtime: static
+    buildCommand: npm install --legacy-peer-deps && npm run build:web --workspace mobile
+    staticPublishPath: ./mobile/dist
+    envVars:
+      # Points the built app at the API above. Render fills in the real
+      # hostname once the API service exists.
+      - key: EXPO_PUBLIC_API_URL
+        fromService:
+          name: aadarbahar-api
+          type: web
+          property: host
+    routes:
+      # The app handles its own navigation, so every address has to be served
+      # the same page, or refreshing on any screen would 404.
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    headers:
+      # The service worker decides when the app updates itself. If a browser
+      # caches it, people stay on an old version indefinitely.
+      - path: /sw.js
+        name: Cache-Control
+        value: no-cache, no-store, must-revalidate
+      - path: /manifest.json
+        name: Cache-Control
+        value: no-cache

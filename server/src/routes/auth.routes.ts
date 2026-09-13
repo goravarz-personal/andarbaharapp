@@ -5,6 +5,7 @@ import { signToken } from '../lib/jwt';
 import { hashPassword, verifyPassword } from '../lib/password';
 import { requireAuth, currentUser } from '../middleware/auth';
 import { asyncHandler, validateBody } from '../middleware/validate';
+import { loginLimiter, sensitiveLimiter } from '../middleware/rateLimit';
 import { changePasswordSchema, loginSchema, updateMeSchema } from '../types/schemas';
 import { emptyToNull, serializeUser } from '../services/user.service';
 import { getPlayerBalances, getPlayerStats } from '../services/stats.service';
@@ -13,6 +14,7 @@ export const authRouter = Router();
 
 authRouter.post(
   '/login',
+  loginLimiter,
   validateBody(loginSchema),
   asyncHandler(async (req, res) => {
     const { username, password } = req.body as { username: string; password: string };
@@ -75,6 +77,7 @@ authRouter.patch(
 authRouter.post(
   '/change-password',
   requireAuth,
+  sensitiveLimiter,
   validateBody(changePasswordSchema),
   asyncHandler(async (req, res) => {
     const me = currentUser(req);

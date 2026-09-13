@@ -43,32 +43,57 @@ and worst nights.
 removes players, promotes other admins, resets passwords, records payments by
 hand, and deletes anything that was entered wrong.
 
-## Getting started
+## Getting it online
 
-You need [Node](https://nodejs.org) 20 or newer. Everything else installs
-itself, and the database is a SQLite file — nothing to set up.
+Most people want this on the internet, not on a laptop — so friends can open a
+link and add the app to their home screen. **[DEPLOYMENT.md](DEPLOYMENT.md)**
+walks through that start to finish: about 20 minutes, free, no command line.
+
+The short version: a free Postgres database from [Neon](https://neon.com), then
+one click on [Render](https://render.com), which reads `render.yaml` and puts up
+both the API and the app.
+
+## Installing it on a phone
+
+There is no app store step. Open the address in a phone browser and the app
+offers to add itself to the home screen — one tap on Android, Share → *Add to
+Home Screen* on an iPhone. After that it runs full screen with its own icon,
+like any other app, and updates itself whenever you deploy.
+
+Proper store builds are possible later (`npx eas build`); see the end of
+DEPLOYMENT.md for what that costs and what Apple asks about.
+
+## Running it on your own machine
+
+You need [Node](https://nodejs.org) 20 or newer and a PostgreSQL database. The
+quickest way to get the database is Docker:
 
 ```bash
 git clone <this repo>
 cd andarbaharapp
 npm install --legacy-peer-deps
+
+docker compose up -d          # Postgres on port 5432
+
+cp server/.env.example server/.env
+# fill in DATABASE_URL and JWT_SECRET - the file explains both
 ```
 
-> `--legacy-peer-deps` works around a resolution bug in npm 10 that trips over
-> React Native's peer dependency graph. npm 11+ does not need it.
+No Docker? Any Postgres will do, including a free Neon database. Put its
+connection string in `DATABASE_URL` and skip the `docker compose` line.
 
-### 1. Start the API
+Then:
 
 ```bash
-cp server/.env.example server/.env   # then edit JWT_SECRET
-npm run db:setup                     # creates the database and the admin account
-npm run server
+npm run db:setup   # applies migrations, creates the admin account
+npm run server     # API on http://localhost:4000
+npm run mobile     # Expo dev server, in another terminal
 ```
 
-`db:setup` creates an admin account from `server/.env` — `admin` / `admin123`
-by default. The app makes you change that password the first time you sign in.
+The admin account comes from `server/.env`. Leave `ADMIN_PASSWORD` blank and it
+falls back to `admin123`, which the app forces you to change on first sign-in.
 
-To start with something to look at, seed a few demo players and games:
+To start with something to look at:
 
 ```bash
 SEED_DEMO_DATA=true npm run db:seed
@@ -77,45 +102,30 @@ SEED_DEMO_DATA=true npm run db:seed
 That adds `ravi`, `meera`, `arjun` and `sana`, all with the password
 `andar123`, across two game nights.
 
-### 2. Start the app
-
-```bash
-npm run mobile
-```
-
-Then open it:
+### Opening the app
 
 - **On your phone** — install [Expo Go](https://expo.dev/go) and scan the QR
-  code. The app finds the API automatically, as long as the phone and the
-  computer are on the same Wi-Fi.
+  code. It finds the API by itself, as long as the phone and the computer are
+  on the same Wi-Fi.
 - **iOS simulator** — press `i` (needs Xcode, so macOS).
 - **Android emulator** — press `a` (needs Android Studio).
-- **In a browser** — press `w`. Handy for typing up a game on a laptop.
+- **In a browser** — press `w`.
 
-If the app cannot reach the API, tap **Server** on the sign-in screen and enter
-the address by hand — `http://192.168.1.5:4000`, say. It is remembered.
-
-### 3. Ship it to the app stores
-
-The project is plain Expo, so [EAS Build](https://docs.expo.dev/build/setup/)
-handles both platforms:
-
-```bash
-npx eas build --platform ios
-npx eas build --platform android
-```
-
-Point `EXPO_PUBLIC_API_URL` at wherever the API is hosted before building, and
-put the API behind HTTPS — the `NSAllowsArbitraryLoads` and
-`usesCleartextTraffic` flags in `app.json` are there for plain-HTTP home
-networks during development, and should come out for a store build.
+If the app cannot reach the API, tap **Server** on the sign-in screen and type
+the address in — `http://192.168.1.5:4000`, say. It is remembered. (That option
+is hidden in deployed builds, where the address is fixed.)
 
 ## How it is put together
 
 ```
-server/    Express + Prisma API over SQLite
-mobile/    Expo (React Native) app for iOS, Android and web
+server/    Express + Prisma API over PostgreSQL
+mobile/    Expo (React Native) app for iOS, Android and the web
 ```
+
+The web build is a progressive web app: a manifest, a service worker and an
+in-app installer, so a phone can add it to the home screen and run it full
+screen. That is what makes "send your friends a link" work without an app
+store.
 
 ### Money
 
@@ -162,6 +172,9 @@ A few rules are deliberate rather than incidental:
   stay intact.
 - **Changing a password, resetting one, or deactivating an account retires the
   existing sign-in tokens.**
+- **Failed sign-ins are rate limited** — ten per IP per fifteen minutes, with
+  successful ones not counted, so nobody gets locked out for fumbling their own
+  password while a stranger still cannot guess their way in.
 
 ## Development
 
@@ -172,9 +185,11 @@ npm run server     # API with reload on save
 npm run mobile     # Expo dev server
 ```
 
-The test suite runs against a throwaway SQLite file and covers rounding, the
-three split modes, transfer minimisation, IOU netting, and the API — sign-in,
-roles, game CRUD, settling, history and statistics.
+The tests need a Postgres to talk to — `docker compose up -d` provides one, and
+they use a separate `aadarbahar_test` database so your own data is never
+touched. Point `TEST_DATABASE_URL` somewhere else if you prefer. They cover
+rounding, the three split modes, transfer minimisation, IOU netting, and the
+API end to end: sign-in, roles, game CRUD, settling, history and statistics.
 
 ### API
 
@@ -202,11 +217,13 @@ All routes live under `/api` and need `Authorization: Bearer <token>` except
 | `GET` | `/settlements/outstanding` | Netted per pair |
 | `PATCH` `DELETE` | `/settlements/:id` | Mark paid · remove |
 
-### Using a different database
+### Why PostgreSQL
 
-SQLite is the default because it needs nothing. To move to Postgres, change the
-provider in `server/prisma/schema.prisma`, point `DATABASE_URL` at the new
-database, and run `npm run db:setup`. No application code changes.
+The app started on SQLite, which is lovely on a laptop and useless the moment
+you host it — the free hosts hand you a fresh, empty disk on every deploy, so a
+database that lives in a file is a database that disappears. Postgres is the
+same everywhere, and the test suite runs against it too, so a migration that
+would fail in production fails locally first.
 
 ## Licence
 

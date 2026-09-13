@@ -15,10 +15,7 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.aadarbahar.app",
-      "infoPlist": {
-        "NSAllowsArbitraryLoads": true
-      }
+      "bundleIdentifier": "com.aadarbahar.app"
     },
     "android": {
       "package": "com.aadarbahar.app",
@@ -26,15 +23,17 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0B3D2E"
       },
-      "edgeToEdgeEnabled": true,
-      "usesCleartextTraffic": true
+      "edgeToEdgeEnabled": true
     },
     "web": {
       "favicon": "./assets/favicon.png",
-      "bundler": "metro"
+      "bundler": "metro",
+      "output": "single"
     },
     "extra": {
       "defaultApiPort": 4000
-    }
+    },
+    "description": "Game nights, buy-ins and who owes whom.",
+    "primaryColor": "#0B3D2E"
   }
 }

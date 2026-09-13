@@ -4,7 +4,9 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Screen } from '../components/Screen';
 import { Button, Card, TextField } from '../components';
+import { InstallCard } from '../components/InstallCard';
 import { useAuth } from '../state/AuthContext';
+import { API_URL_IS_FIXED } from '../state/apiUrl';
 import { ApiError } from '../api/client';
 import { colors, font, radius, spacing } from '../theme';
 import type { RootStackParamList } from '../navigation/types';
@@ -73,16 +75,20 @@ export function LoginScreen() {
         <Button label="Sign in" onPress={submit} loading={busy} />
       </Card>
 
-      <Pressable
-        onPress={() => navigation.navigate('ServerSettings')}
-        style={styles.serverLink}
-        hitSlop={8}
-      >
-        <Text style={styles.serverLabel}>Server</Text>
-        <Text style={styles.serverValue} numberOfLines={1}>
-          {apiUrl}
-        </Text>
-      </Pressable>
+      <InstallCard />
+
+      {API_URL_IS_FIXED ? null : (
+        <Pressable
+          onPress={() => navigation.navigate('ServerSettings')}
+          style={styles.serverLink}
+          hitSlop={8}
+        >
+          <Text style={styles.serverLabel}>Server</Text>
+          <Text style={styles.serverValue} numberOfLines={1}>
+            {apiUrl}
+          </Text>
+        </Pressable>
+      )}
     </Screen>
   );
 }

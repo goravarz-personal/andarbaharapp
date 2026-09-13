@@ -4,6 +4,7 @@ import { ApiError } from '../lib/errors';
 import { generateTempPassword, hashPassword } from '../lib/password';
 import { requireAdmin, requireAuth, currentUser } from '../middleware/auth';
 import { asyncHandler, validateBody } from '../middleware/validate';
+import { sensitiveLimiter } from '../middleware/rateLimit';
 import { createPlayerSchema, resetPasswordSchema, updatePlayerSchema } from '../types/schemas';
 import { emptyToNull, pickAvatarColor, serializeUser } from '../services/user.service';
 import { getPlayerBalances, getPlayerHistory, getLeaderboard, summarise } from '../services/stats.service';
@@ -155,6 +156,7 @@ playersRouter.patch(
 playersRouter.post(
   '/:id/reset-password',
   requireAdmin,
+  sensitiveLimiter,
   validateBody(resetPasswordSchema),
   asyncHandler(async (req, res) => {
     const id = String(req.params.id);

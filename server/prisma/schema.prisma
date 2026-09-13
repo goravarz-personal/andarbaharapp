@@ -4,11 +4,12 @@
 // Never store money as a float - 0.1 + 0.2 problems turn into arguments at the
 // table. Format for display only at the edges.
 //
-// SQLite does not support Prisma enums, so enum-ish columns are Strings that
-// are validated with zod at the API boundary (see src/types/enums.ts).
+// Enum-ish columns are Strings validated with zod at the API boundary (see
+// src/types/enums.ts) rather than database enums, so that adding a split mode
+// or a game status is a code change and not a migration.
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
