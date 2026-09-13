@@ -36,7 +36,7 @@ interface RequestOptions {
   signal?: AbortSignal;
 }
 
-/** Talks to one AadarBahar server as one signed-in person. */
+/** Talks to one AndarBahar server as one signed-in person. */
 export class ApiClient {
   constructor(
     private readonly baseUrl: string,
@@ -212,7 +212,7 @@ export class ApiClient {
   updateGamePlayer(
     gameId: string,
     seatId: string,
-    body: { buyIn?: number; cashOut?: number; isWinner?: boolean; notes?: string },
+    body: { buyIn?: number; cashOut?: number; isBanker?: boolean; notes?: string },
   ) {
     return this.request<{ game: Game }>(`/games/${gameId}/players/${seatId}`, {
       method: 'PATCH',

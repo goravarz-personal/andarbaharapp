@@ -97,26 +97,27 @@ export function GameDetailScreen() {
             <Text style={styles.date}>{formatDateLong(game.playedOn)}</Text>
             {game.location ? <Text style={styles.location}>{game.location}</Text> : null}
           </View>
-          {game.winner ? (
-            <Badge label={`${game.winner.displayName} won`} tone="win" icon="trophy" />
+          {game.topWinner ? (
+            <Badge label={`${game.topWinner.displayName} won most`} tone="win" icon="trophy" />
           ) : null}
         </View>
 
-        {/* The night's arithmetic, in the order it actually happens. */}
+        {/* Chips leave the bank and come back to it; the costs sit alongside. */}
         <View style={styles.maths}>
-          <MathRow label="Everyone put in" value={formatMoney(game.totals.buyIn)} />
-          <MathRow label="Spent on the night" value={`− ${formatMoney(game.totals.expenses)}`} />
-          <MathRow label="Taken home" value={`− ${formatMoney(game.totals.cashOut)}`} />
+          <MathRow label="Chips bought" value={formatMoney(game.totals.buyIn)} />
+          <MathRow label="Chips cashed back in" value={formatMoney(game.totals.cashOut)} />
+          <MathRow label="Spent on the night" value={formatMoney(game.totals.expenses)} />
           <View style={styles.mathsTotal}>
             <Text style={styles.mathsTotalLabel}>
-              {game.balanced ? 'Adds up' : 'Does not add up'}
+              {game.balanced ? 'Chips add up' : 'Chips do not add up'}
             </Text>
             {game.balanced ? (
               <Badge label="Balanced" tone="win" icon="checkmark-circle" />
             ) : (
-              <Text style={styles.mathsBad}>{formatMoney(game.totals.difference)}</Text>
+              <Text style={styles.mathsBad}>{formatMoney(Math.abs(game.totals.difference))}</Text>
             )}
           </View>
+          {game.banker ? <MathRow label="Banker" value={game.banker.displayName} /> : null}
         </View>
 
         {!game.balanced ? (
@@ -124,8 +125,8 @@ export function GameDetailScreen() {
             <Ionicons name="alert-circle" size={15} color={colors.warn} />
             <Text style={styles.imbalanceText}>
               {game.totals.difference > 0
-                ? `${formatMoney(game.totals.difference)} of the pot is unaccounted for. Either someone's cash-out is too low, or a cost is missing.`
-                : `${formatMoney(Math.abs(game.totals.difference))} more went out than came in. Check the cash-outs and what was spent.`}
+                ? `${formatMoney(game.totals.difference)} of chips never came back to the banker. Someone's cash-out is probably too low.`
+                : `${formatMoney(Math.abs(game.totals.difference))} more was cashed out than was ever bought. Check the cash-outs.`}
             </Text>
           </View>
         ) : null}
@@ -146,27 +147,42 @@ export function GameDetailScreen() {
             key={player.id}
             onPress={() => navigation.navigate('PlayerDetail', { playerId: player.userId })}
             style={({ pressed }) => [
-              styles.playerRow,
+              styles.playerRowWrap,
               index < ranked.length - 1 && styles.divided,
               pressed && styles.pressed,
             ]}
           >
-            <View style={styles.playerName}>
-              <Avatar name={player.displayName} color={player.avatarColor} size={30} />
-              <Text
-                style={[styles.playerLabel, player.userId === user?.id && styles.playerIsMe]}
-                numberOfLines={1}
-              >
-                {player.displayName}
-                {player.userId === user?.id ? ' (you)' : ''}
+            <View style={styles.playerRow}>
+              <View style={styles.playerName}>
+                <Avatar name={player.displayName} color={player.avatarColor} size={30} />
+                <Text
+                  style={[styles.playerLabel, player.userId === user?.id && styles.playerIsMe]}
+                  numberOfLines={1}
+                >
+                  {player.displayName}
+                  {player.userId === user?.id ? ' (you)' : ''}
+                </Text>
+                {player.isTopWinner ? (
+                  <Ionicons name="trophy" size={13} color={colors.gold} />
+                ) : null}
+                {player.isBanker ? (
+                  <Ionicons name="wallet" size={12} color={colors.feltSoft} />
+                ) : null}
+              </View>
+              <Text style={styles.cell}>{formatMoney(player.buyIn, { bare: true })}</Text>
+              <Text style={styles.cell}>{formatMoney(player.cashOut, { bare: true })}</Text>
+              <View style={styles.netCell}>
+                <Money value={player.net} signed size="small" />
+              </View>
+            </View>
+
+            {/* Why the net is not simply out minus in. */}
+            {player.expenseShare > 0 ? (
+              <Text style={styles.playerSub}>
+                {formatMoney(player.tableNet, { signed: true })} at the table, less{' '}
+                {formatMoney(player.expenseShare)} of the night&apos;s costs
               </Text>
-              {player.isWinner ? <Ionicons name="trophy" size={13} color={colors.gold} /> : null}
-            </View>
-            <Text style={styles.cell}>{formatMoney(player.buyIn, { bare: true })}</Text>
-            <Text style={styles.cell}>{formatMoney(player.cashOut, { bare: true })}</Text>
-            <View style={styles.netCell}>
-              <Money value={player.net} signed size="small" />
-            </View>
+            ) : null}
           </Pressable>
         ))}
       </Card>
@@ -194,7 +210,9 @@ export function GameDetailScreen() {
                 <Text style={styles.expenseLabel}>{EXPENSE_TYPE_LABELS[expense.type] ?? 'Cost'}</Text>
                 <Text style={styles.expenseMeta} numberOfLines={1}>
                   {expense.label ? `${expense.label} · ` : ''}
-                  {expense.paidBy.displayName} paid
+                  {expense.carriedBy.length > 0
+                    ? expense.carriedBy.map((person) => person.displayName).join(' and ')
+                    : 'nobody yet'}
                 </Text>
               </View>
               <Text style={styles.expenseAmount}>{formatMoney(expense.amount)}</Text>
@@ -280,11 +298,14 @@ const styles = StyleSheet.create({
   headName: { flex: 1, textAlign: 'left' },
   headNet: { width: 70 },
 
-  playerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: spacing(4),
-    paddingVertical: spacing(3),
+  playerRowWrap: { paddingHorizontal: spacing(4), paddingVertical: spacing(3) },
+  playerRow: { flexDirection: 'row', alignItems: 'center' },
+  playerSub: {
+    ...font.small,
+    color: colors.inkFaint,
+    fontSize: 11,
+    marginTop: spacing(1),
+    marginLeft: 38,
   },
   divided: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line },
   pressed: { opacity: 0.6, backgroundColor: colors.surfaceMuted },

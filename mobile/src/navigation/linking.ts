@@ -4,10 +4,10 @@ import type { RootStackParamList } from './types';
 /**
  * Maps screens to URLs. On the web build this makes the address bar
  * meaningful and lets a refresh land you back where you were; on a phone it
- * makes aadarbahar:// links open the right screen.
+ * makes andarbahar:// links open the right screen.
  */
 export const linking: LinkingOptions<RootStackParamList> = {
-  prefixes: ['aadarbahar://'],
+  prefixes: ['andarbahar://'],
   config: {
     screens: {
       Login: 'login',

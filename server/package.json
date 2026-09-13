@@ -1,8 +1,8 @@
 {
-  "name": "@aadarbahar/server",
+  "name": "@andarbahar/server",
   "version": "1.0.0",
   "private": true,
-  "description": "API backend for AadarBaharApp - games, players, expenses and settlements.",
+  "description": "API backend for AndarBahar - games, players and what the night cost.",
   "main": "dist/index.js",
   "scripts": {
     "dev": "tsx watch src/index.ts",

@@ -12,7 +12,7 @@ async function main(): Promise<void> {
   // Hosts hand the port over in an environment variable and expect the process
   // to listen on every interface, not just loopback.
   const server = app.listen(env.port, '0.0.0.0', () => {
-    console.log(`AadarBahar API listening on port ${env.port} (${env.nodeEnv})`);
+    console.log(`AndarBahar API listening on port ${env.port} (${env.nodeEnv})`);
   });
 
   async function shutdown(signal: string): Promise<void> {

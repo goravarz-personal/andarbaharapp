@@ -1,8 +1,8 @@
 {
-  "name": "aadarbaharapp",
+  "name": "andarbaharapp",
   "version": "1.0.0",
   "private": true,
-  "description": "AadarBaharApp - Andar Bahar game night tracker for iOS and Android, with an API backend.",
+  "description": "AndarBahar - game night tracker for iOS and Android, with an API backend.",
   "workspaces": [
     "server",
     "mobile"

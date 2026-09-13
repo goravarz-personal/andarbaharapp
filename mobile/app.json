@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "AadarBahar",
-    "slug": "aadarbaharapp",
+    "name": "AndarBahar",
+    "slug": "andarbaharapp",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "scheme": "aadarbahar",
+    "scheme": "andarbahar",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
@@ -15,10 +15,10 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.aadarbahar.app"
+      "bundleIdentifier": "com.andarbahar.app"
     },
     "android": {
-      "package": "com.aadarbahar.app",
+      "package": "com.andarbahar.app",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0B3D2E"

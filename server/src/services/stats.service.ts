@@ -24,8 +24,13 @@ export interface PlayerHistoryRow {
   playerCount: number;
   buyIn: number;
   cashOut: number;
+  /** Before the night's costs came off. */
+  tableNet: number;
+  expenseShare: number;
   net: number;
+  /** Finished ahead once the costs were taken off. */
   isWinner: boolean;
+  isTopWinner: boolean;
 }
 
 /**
@@ -52,8 +57,11 @@ async function historyFor(userId: string, where: Prisma.GameWhereInput = {}): Pr
       playerCount: game.players.length,
       buyIn: line.buyIn,
       cashOut: line.cashOut,
+      tableNet: line.tableNet,
+      expenseShare: line.expenseShare,
       net: line.net,
       isWinner: line.isWinner,
+      isTopWinner: line.isTopWinner,
     });
   }
   return rows;
@@ -113,13 +121,23 @@ export async function getLeaderboard() {
           playerCount: game.players.length,
           buyIn: line.buyIn,
           cashOut: line.cashOut,
+          tableNet: line.tableNet,
+          expenseShare: line.expenseShare,
           net: line.net,
           isWinner: line.isWinner,
+          isTopWinner: line.isTopWinner,
         });
       }
       return { ...user, stats: summarise(rows) };
     })
-    .sort((a, b) => b.stats.netProfit - a.stats.netProfit);
+    .sort((a, b) => {
+      // Somebody who has never sat down is not leading the table on nil.
+      const aPlayed = a.stats.gamesPlayed > 0;
+      const bPlayed = b.stats.gamesPlayed > 0;
+      if (aPlayed !== bPlayed) return aPlayed ? -1 : 1;
+      if (b.stats.netProfit !== a.stats.netProfit) return b.stats.netProfit - a.stats.netProfit;
+      return a.displayName.localeCompare(b.displayName);
+    });
 }
 
 /** Home screen numbers for whoever is signed in. */

@@ -34,7 +34,7 @@ export function createApp(): Express {
   // no page here - the app is served separately - so say so plainly.
   app.get('/', (_req, res) => {
     res.json({
-      service: 'AadarBahar API',
+      service: 'AndarBahar API',
       health: '/api/health',
       app: env.corsOrigin === '*' ? undefined : env.corsOrigin.split(',')[0],
     });

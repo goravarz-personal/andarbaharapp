@@ -37,7 +37,12 @@ export function PlayersScreen() {
   const rows = [...(data?.leaderboard ?? [])].sort((a, b) => {
     if (sort === 'NAME') return a.displayName.localeCompare(b.displayName);
     if (sort === 'GAMES') return b.stats.gamesPlayed - a.stats.gamesPlayed;
-    return b.stats.netProfit - a.stats.netProfit;
+    // Winnings, but anyone yet to play sits below everyone who has.
+    const aPlayed = a.stats.gamesPlayed > 0;
+    const bPlayed = b.stats.gamesPlayed > 0;
+    if (aPlayed !== bPlayed) return aPlayed ? -1 : 1;
+    if (b.stats.netProfit !== a.stats.netProfit) return b.stats.netProfit - a.stats.netProfit;
+    return a.displayName.localeCompare(b.displayName);
   });
 
   if (loading && !data) return <LoadingView />;

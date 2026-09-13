@@ -3,7 +3,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Button, Card, TextField } from './index';
 import { Select, type SelectOption } from './Select';
-import { parseRupees } from '../utils/money';
+import { formatMoney, parseRupees } from '../utils/money';
 import { colors, font, radius, spacing } from '../theme';
 import { EXPENSE_TYPES, EXPENSE_TYPE_LABELS, type ExpenseInput, type ExpenseType } from '../api/types';
 
@@ -11,7 +11,8 @@ export interface ExpensePerson {
   userId: string;
   displayName: string;
   avatarColor?: string | null;
-  isWinner?: boolean;
+  /** Won the most at the table. Dinner is theirs.  */
+  isTopWinner?: boolean;
 }
 
 const TYPE_ICONS: Record<ExpenseType, keyof typeof Ionicons.glyphMap> = {
@@ -33,9 +34,9 @@ const TYPE_OPTIONS: Array<SelectOption<ExpenseType>> = EXPENSE_TYPES.map((type) 
 /**
  * Captures one cost for the night.
  *
- * Dinner is the default, and dinner is always on the winner - so for that type
- * there is nothing to choose and nothing to get wrong. Anything else needs a
- * payer named.
+ * Dinner is the default and always lands on whoever won the most, so there is
+ * nothing to pick. Anything else is carried by whoever says they will - one
+ * person or several, split evenly between them.
  */
 export function ExpenseForm({
   players,
@@ -48,45 +49,52 @@ export function ExpenseForm({
   submitLabel?: string;
   busy?: boolean;
 }) {
-  const winner = players.find((person) => person.isWinner) ?? null;
+  const topWinner = players.find((person) => person.isTopWinner) ?? null;
 
   const [type, setType] = useState<ExpenseType>('DINNER');
   const [amount, setAmount] = useState('');
   const [label, setLabel] = useState('');
-  const [paidById, setPaidById] = useState<string | null>(null);
+  const [bearers, setBearers] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   const isDinner = type === 'DINNER';
   const amountPaise = parseRupees(amount) ?? 0;
 
+  function toggleBearer(userId: string) {
+    setBearers((current) =>
+      current.includes(userId) ? current.filter((id) => id !== userId) : [...current, userId],
+    );
+  }
+
   function submit() {
     setError(null);
-
     if (amountPaise <= 0) return setError('Enter how much it came to.');
-    if (isDinner && !winner) {
-      return setError('Mark who won first — dinner is always on the winner.');
+    if (isDinner && !topWinner) {
+      return setError('Nobody has won anything yet, so there is nobody to put dinner on.');
     }
-    if (!isDinner && !paidById) return setError('Say who paid.');
+    if (!isDinner && bearers.length === 0) return setError('Pick who is covering this one.');
 
     onSubmit({
       type,
       amount: amountPaise,
       label: label.trim() || undefined,
-      // Dinner is resolved by the server from whoever won.
-      paidById: isDinner ? undefined : (paidById ?? undefined),
+      shareUserIds: isDinner ? undefined : bearers,
     });
 
     setAmount('');
     setLabel('');
+    setBearers([]);
   }
 
   if (players.length === 0) {
     return (
       <Card>
-        <Text style={styles.note}>Add players to the game first — someone has to pay the bill.</Text>
+        <Text style={styles.note}>Add players to the game first — someone has to carry the cost.</Text>
       </Card>
     );
   }
+
+  const each = bearers.length > 0 ? Math.floor(amountPaise / bearers.length) : 0;
 
   return (
     <Card>
@@ -109,28 +117,31 @@ export function ExpenseForm({
         <View style={styles.onWinner}>
           <Ionicons name="trophy" size={16} color={colors.gold} />
           <Text style={styles.onWinnerText}>
-            {winner ? (
+            {topWinner ? (
               <>
-                Dinner is on <Text style={styles.strong}>{winner.displayName}</Text>, who won the
-                night.
+                Dinner is on <Text style={styles.strong}>{topWinner.displayName}</Text>, who won the
+                most. Correct someone&apos;s cash-out and the bill follows.
               </>
             ) : (
-              'Nobody is marked as the winner yet. Dinner is always on the winner, so mark them first.'
+              'Dinner goes to whoever wins the most. Fill in the cash-outs and it sorts itself out.'
             )}
           </Text>
         </View>
       ) : (
         <>
-          <Text style={styles.fieldLabel}>Who paid</Text>
+          <Text style={styles.fieldLabel}>Who is covering it</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipRow}>
             {players.map((person) => {
-              const active = person.userId === paidById;
+              const active = bearers.includes(person.userId);
               return (
                 <Pressable
                   key={person.userId}
-                  onPress={() => setPaidById(person.userId)}
+                  onPress={() => toggleBearer(person.userId)}
                   style={[styles.chip, active && styles.chipActive]}
                 >
+                  {active ? (
+                    <Ionicons name="checkmark" size={13} color={colors.white} />
+                  ) : null}
                   <Text style={[styles.chipText, active && styles.chipTextActive]}>
                     {person.displayName}
                   </Text>
@@ -138,6 +149,13 @@ export function ExpenseForm({
               );
             })}
           </ScrollView>
+          <Text style={styles.splitHint}>
+            {bearers.length === 0
+              ? 'Tap one person, or several to split it between them.'
+              : bearers.length === 1
+                ? 'All of it on them.'
+                : `Split ${bearers.length} ways — about ${formatMoney(each)} each.`}
+          </Text>
         </>
       )}
 
@@ -157,8 +175,11 @@ export function ExpenseForm({
 
 const styles = StyleSheet.create({
   fieldLabel: { ...font.smallStrong, color: colors.inkMuted, marginBottom: spacing(1.5) },
-  chipRow: { marginBottom: spacing(4) },
+  chipRow: { marginBottom: spacing(2) },
   chip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing(1.5),
     paddingHorizontal: spacing(3.5),
     paddingVertical: spacing(2),
     borderRadius: radius.pill,
@@ -170,6 +191,7 @@ const styles = StyleSheet.create({
   chipActive: { backgroundColor: colors.felt, borderColor: colors.felt },
   chipText: { ...font.smallStrong, color: colors.inkMuted },
   chipTextActive: { color: colors.white },
+  splitHint: { ...font.small, color: colors.inkFaint, marginBottom: spacing(4), lineHeight: 18 },
 
   onWinner: {
     flexDirection: 'row',

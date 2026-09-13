@@ -1,4 +1,4 @@
-# Putting AadarBahar online
+# Putting AndarBahar online
 
 This walks you through getting the app onto the internet so you can send your
 friends a link. No command line, no servers to look after.

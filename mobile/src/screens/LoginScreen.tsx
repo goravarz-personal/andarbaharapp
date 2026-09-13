@@ -43,7 +43,7 @@ export function LoginScreen() {
     <Screen contentStyle={styles.content}>
       <View style={styles.hero}>
         <Image source={require('../../assets/icon.png')} style={styles.logo} />
-        <Text style={styles.title}>AadarBahar</Text>
+        <Text style={styles.title}>AndarBahar</Text>
         <Text style={styles.subtitle}>Game nights, buy-ins and who owes whom.</Text>
       </View>
 

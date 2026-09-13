@@ -28,6 +28,10 @@ export function ManageRosterScreen() {
   const [working, setWorking] = useState<string | null>(null);
   /** Which player's name is being edited, and what it has been changed to. */
   const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null);
+  /** Which player's password is being reset, and what was typed for it. */
+  const [resetting, setResetting] = useState<
+    { id: string; name: string; username: string; password: string } | null
+  >(null);
 
   const { data, loading, error, refreshing, refetch } = useApiQuery<{ players: Player[] }>((client) =>
     client.players(true),
@@ -57,25 +61,28 @@ export function ManageRosterScreen() {
     await act(id, () => api.updatePlayer(id, { displayName: name }), 'Could not rename them');
   }
 
-  function resetPassword(player: Player) {
-    confirm({
-      title: `Reset ${player.displayName}'s password?`,
-      message: 'They will be signed out everywhere and given a new temporary password.',
-      confirmLabel: 'Reset',
-      destructive: true,
-      onConfirm: () =>
-        void act(
-          player.id,
-          async () => {
-            const response = await api.resetPlayerPassword(player.id);
-            notify(
-              'New temporary password',
-              `${player.displayName} signs in with:\n\nUsername: ${response.player.username}\nPassword: ${response.password}\n\nThey will be asked to change it.`,
-            );
-          },
-          'Could not reset the password',
-        ),
-    });
+  /** Generate one for them, or set one you have already agreed out loud. */
+  async function savePassword() {
+    if (!resetting) return;
+    const chosen = resetting.password.trim();
+    if (chosen && chosen.length < 6) {
+      notify('Too short', 'A password needs at least 6 characters.');
+      return;
+    }
+    const { id, name, username } = resetting;
+    setResetting(null);
+    await act(
+      id,
+      async () => {
+        const response = await api.resetPlayerPassword(id, chosen || undefined);
+        notify(
+          chosen ? 'Password set' : 'New temporary password',
+          `${name} signs in with:\n\nUsername: ${username}\nPassword: ${response.password}` +
+            (chosen ? '' : '\n\nThey will be asked to change it.'),
+        );
+      },
+      'Could not reset the password',
+    );
   }
 
   function toggleRole(player: Player) {
@@ -142,7 +149,20 @@ export function ManageRosterScreen() {
           onRenameCancel={() => setRenaming(null)}
           onRenameSave={saveName}
           onOpen={() => navigation.navigate('PlayerDetail', { playerId: player.id })}
-          onResetPassword={() => resetPassword(player)}
+          resetting={resetting?.id === player.id ? resetting.password : null}
+          onResetStart={() =>
+            setResetting({
+              id: player.id,
+              name: player.displayName,
+              username: player.username,
+              password: '',
+            })
+          }
+          onResetChange={(password) =>
+            setResetting((current) => (current ? { ...current, password } : current))
+          }
+          onResetCancel={() => setResetting(null)}
+          onResetSave={savePassword}
           onToggleRole={() => toggleRole(player)}
           onToggleActive={() => toggleActive(player)}
         />
@@ -163,7 +183,20 @@ export function ManageRosterScreen() {
               onRenameCancel={() => setRenaming(null)}
               onRenameSave={saveName}
               onOpen={() => navigation.navigate('PlayerDetail', { playerId: player.id })}
-              onResetPassword={() => resetPassword(player)}
+              resetting={resetting?.id === player.id ? resetting.password : null}
+          onResetStart={() =>
+            setResetting({
+              id: player.id,
+              name: player.displayName,
+              username: player.username,
+              password: '',
+            })
+          }
+          onResetChange={(password) =>
+            setResetting((current) => (current ? { ...current, password } : current))
+          }
+          onResetCancel={() => setResetting(null)}
+          onResetSave={savePassword}
               onToggleRole={() => toggleRole(player)}
               onToggleActive={() => toggleActive(player)}
             />
@@ -184,7 +217,11 @@ function PlayerCard({
   onRenameCancel,
   onRenameSave,
   onOpen,
-  onResetPassword,
+  resetting,
+  onResetStart,
+  onResetChange,
+  onResetCancel,
+  onResetSave,
   onToggleRole,
   onToggleActive,
 }: {
@@ -198,7 +235,12 @@ function PlayerCard({
   onRenameCancel: () => void;
   onRenameSave: () => void;
   onOpen: () => void;
-  onResetPassword: () => void;
+  /** The in-progress password, or null when this card is not being reset. */
+  resetting: string | null;
+  onResetStart: () => void;
+  onResetChange: (password: string) => void;
+  onResetCancel: () => void;
+  onResetSave: () => void;
   onToggleRole: () => void;
   onToggleActive: () => void;
 }) {
@@ -216,6 +258,28 @@ function PlayerCard({
         <View style={styles.renameActions}>
           <Button label="Cancel" variant="ghost" onPress={onRenameCancel} style={styles.renameButton} />
           <Button label="Save" onPress={onRenameSave} style={styles.renameButton} />
+        </View>
+      </Card>
+    );
+  }
+
+  if (resetting !== null) {
+    return (
+      <Card style={styles.card}>
+        <TextField
+          label={`New password for @${player.username}`}
+          value={resetting}
+          onChangeText={onResetChange}
+          autoFocus
+          autoCapitalize="none"
+          autoCorrect={false}
+          placeholder="Leave blank to generate one"
+          hint="They are signed out everywhere either way."
+          onSubmitEditing={onResetSave}
+        />
+        <View style={styles.renameActions}>
+          <Button label="Cancel" variant="ghost" onPress={onResetCancel} style={styles.renameButton} />
+          <Button label="Set it" onPress={onResetSave} style={styles.renameButton} />
         </View>
       </Card>
     );
@@ -241,7 +305,7 @@ function PlayerCard({
 
       <View style={styles.actions}>
         <Action icon="pencil-outline" label="Rename" onPress={onRenameStart} />
-        <Action icon="key-outline" label="Password" onPress={onResetPassword} />
+        <Action icon="key-outline" label="Password" onPress={onResetStart} />
         <Action
           icon={player.role === 'ADMIN' ? 'person-outline' : 'shield-checkmark-outline'}
           label={player.role === 'ADMIN' ? 'Make player' : 'Make admin'}

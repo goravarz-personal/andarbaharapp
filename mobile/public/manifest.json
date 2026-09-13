@@ -1,6 +1,6 @@
 {
-  "name": "AadarBahar",
-  "short_name": "AadarBahar",
+  "name": "AndarBahar",
+  "short_name": "AndarBahar",
   "description": "Game nights, buy-ins and who owes whom.",
   "start_url": "/",
   "scope": "/",
@@ -8,7 +8,10 @@
   "orientation": "portrait",
   "background_color": "#0B3D2E",
   "theme_color": "#0B3D2E",
-  "categories": ["utilities", "finance"],
+  "categories": [
+    "utilities",
+    "finance"
+  ],
   "icons": [
     {
       "src": "/icons/icon-192.png",

@@ -1,7 +1,7 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { ApiError } from '../lib/errors';
-import { computeGameLedger, findWinnerId } from './ledger.service';
+import { computeGameLedger } from './ledger.service';
 
 export const gameInclude = {
   createdBy: { select: { id: true, username: true, displayName: true } },
@@ -12,7 +12,12 @@ export const gameInclude = {
     orderBy: { id: 'asc' },
   },
   expenses: {
-    include: { paidBy: { select: { id: true, username: true, displayName: true } } },
+    include: {
+      shares: {
+        include: { user: { select: { id: true, displayName: true } } },
+        orderBy: { id: 'asc' },
+      },
+    },
     orderBy: { createdAt: 'asc' },
   },
 } satisfies Prisma.GameInclude;
@@ -33,13 +38,13 @@ export function ledgerOf(game: GameWithRelations) {
       displayName: player.user.displayName,
       buyIn: player.buyIn,
       cashOut: player.cashOut,
-      isWinner: player.isWinner,
+      isBanker: player.isBanker,
     })),
     game.expenses.map((expense) => ({
       id: expense.id,
       type: expense.type,
       amount: expense.amount,
-      paidById: expense.paidById,
+      shareUserIds: expense.shares.map((share) => share.userId),
     })),
   );
 }
@@ -48,6 +53,8 @@ export function ledgerOf(game: GameWithRelations) {
 export function serializeGame(game: GameWithRelations) {
   const ledger = ledgerOf(game);
   const lineByUser = new Map(ledger.lines.map((line) => [line.userId, line]));
+  const nameByUser = new Map(game.players.map((p) => [p.userId, p.user.displayName]));
+  const topWinner = ledger.lines.find((line) => line.isTopWinner) ?? null;
 
   return {
     id: game.id,
@@ -59,43 +66,62 @@ export function serializeGame(game: GameWithRelations) {
     updatedAt: game.updatedAt.toISOString(),
     createdBy: game.createdBy,
     playerCount: game.players.length,
-    players: game.players.map((player) => ({
-      id: player.id,
-      userId: player.userId,
-      username: player.user.username,
-      displayName: player.user.displayName,
-      avatarColor: player.user.avatarColor,
-      buyIn: player.buyIn,
-      cashOut: player.cashOut,
-      isWinner: player.isWinner,
-      notes: player.notes,
-      net: lineByUser.get(player.userId)?.net ?? player.cashOut - player.buyIn,
-    })),
+    players: game.players.map((player) => {
+      const line = lineByUser.get(player.userId);
+      return {
+        id: player.id,
+        userId: player.userId,
+        username: player.user.username,
+        displayName: player.user.displayName,
+        avatarColor: player.user.avatarColor,
+        buyIn: player.buyIn,
+        cashOut: player.cashOut,
+        isBanker: player.isBanker,
+        notes: player.notes,
+        tableNet: line?.tableNet ?? player.cashOut - player.buyIn,
+        expenseShare: line?.expenseShare ?? 0,
+        net: line?.net ?? player.cashOut - player.buyIn,
+        isWinner: line?.isWinner ?? false,
+        isTopWinner: line?.isTopWinner ?? false,
+      };
+    }),
     expenses: game.expenses.map((expense) => ({
       id: expense.id,
       type: expense.type,
       label: expense.label,
       amount: expense.amount,
-      paidBy: expense.paidBy,
+      /** Dinner names the top winner; everything else names who chipped in. */
+      carriedBy:
+        expense.type === 'DINNER'
+          ? topWinner
+            ? [{ userId: topWinner.userId, displayName: topWinner.displayName }]
+            : []
+          : expense.shares.map((share) => ({
+              userId: share.userId,
+              displayName: share.user.displayName,
+            })),
     })),
     totals: ledger.totals,
     balanced: ledger.balanced,
-    winner: (() => {
-      const seat = game.players.find((player) => player.isWinner);
-      if (!seat) return null;
-      return {
-        userId: seat.userId,
-        displayName: seat.user.displayName,
-        net: lineByUser.get(seat.userId)?.net ?? 0,
-      };
+    banker: (() => {
+      const seat = game.players.find((player) => player.isBanker);
+      return seat ? { userId: seat.userId, displayName: seat.user.displayName } : null;
     })(),
+    topWinner: topWinner
+      ? {
+          userId: topWinner.userId,
+          displayName: nameByUser.get(topWinner.userId) ?? topWinner.displayName,
+          net: topWinner.net,
+          tableNet: topWinner.tableNet,
+        }
+      : null,
   };
 }
 
 /** Lighter payload for the games list. */
 export function serializeGameSummary(game: GameWithRelations) {
   const ledger = ledgerOf(game);
-  const winner = game.players.find((player) => player.isWinner);
+  const topWinner = ledger.lines.find((line) => line.isTopWinner) ?? null;
 
   return {
     id: game.id,
@@ -105,67 +131,57 @@ export function serializeGameSummary(game: GameWithRelations) {
     playerCount: game.players.length,
     totals: ledger.totals,
     balanced: ledger.balanced,
-    winner: winner
-      ? { userId: winner.userId, displayName: winner.user.displayName }
+    topWinner: topWinner
+      ? { userId: topWinner.userId, displayName: topWinner.displayName }
       : null,
-    players: game.players.map((player) => ({
-      userId: player.userId,
-      displayName: player.user.displayName,
-      avatarColor: player.user.avatarColor,
-      net: ledger.lines.find((line) => line.userId === player.userId)?.net ?? 0,
+    players: ledger.lines.map((line) => ({
+      userId: line.userId,
+      displayName: line.displayName,
+      avatarColor:
+        game.players.find((p) => p.userId === line.userId)?.user.avatarColor ?? null,
+      net: line.net,
     })),
   };
 }
 
 /**
- * Decides who an expense is recorded against.
- *
- * Dinner is always on the winner - that is the house rule this app exists to
- * keep track of - so it is resolved here rather than taken from the client.
- * Anything else needs someone at the table named explicitly.
+ * Checks the people named as carrying a cost are actually in the game.
+ * Dinner names nobody - it lands on whoever won the most.
  */
-export async function resolveExpensePayer(
+export async function assertShareUsersAreSeated(
   gameId: string,
-  input: { type: string; paidById?: string },
-): Promise<string> {
-  const seats = await prisma.gamePlayer.findMany({
-    where: { gameId },
-    select: { userId: true, isWinner: true },
-  });
+  type: string,
+  shareUserIds: string[],
+): Promise<string[]> {
+  if (type === 'DINNER') return [];
 
-  if (seats.length === 0) {
+  if (shareUserIds.length === 0) {
+    throw ApiError.badRequest('Say who is covering this one.');
+  }
+
+  const seated = await prisma.gamePlayer.findMany({
+    where: { gameId },
+    select: { userId: true },
+  });
+  const seatedIds = new Set(seated.map((seat) => seat.userId));
+
+  if (seatedIds.size === 0) {
     throw ApiError.badRequest('Add players to the game before recording what it cost.');
   }
-
-  if (input.type === 'DINNER') {
-    const winnerId = findWinnerId(seats);
-    if (!winnerId) {
-      throw ApiError.badRequest(
-        'Mark who won first - dinner is always on the winner.',
-      );
-    }
-    return winnerId;
+  if (shareUserIds.some((userId) => !seatedIds.has(userId))) {
+    throw ApiError.badRequest('Everyone chipping in has to be a player in this game.');
   }
-
-  if (!input.paidById) throw ApiError.badRequest('Say who paid.');
-  if (!seats.some((seat) => seat.userId === input.paidById)) {
-    throw ApiError.badRequest('Whoever paid needs to be one of the players in this game.');
-  }
-  return input.paidById;
+  return [...new Set(shareUserIds)];
 }
 
-/**
- * Only one player can be the winner, because the night's costs come out of
- * their winnings and "split between the winners" is not a rule anyone wants to
- * argue about at midnight.
- */
-export async function clearOtherWinners(
+/** At most one banker per game - somebody has to be holding the cash. */
+export async function clearOtherBankers(
   tx: Prisma.TransactionClient,
   gameId: string,
   keepUserId: string,
 ): Promise<void> {
   await tx.gamePlayer.updateMany({
-    where: { gameId, userId: { not: keepUserId }, isWinner: true },
-    data: { isWinner: false },
+    where: { gameId, userId: { not: keepUserId }, isBanker: true },
+    data: { isBanker: false },
   });
 }

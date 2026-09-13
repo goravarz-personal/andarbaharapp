@@ -169,106 +169,128 @@ describe('games', () => {
       .set(auth(adminToken))
       .send({
         playedOn: '2026-02-14T19:30:00.000Z',
-        title: 'Valentine special',
-        location: "Ravi's place",
+        title: 'Saturday-Regular',
+        location: 'Katte Room',
         players: [
-          { userId: ravi.id, buyIn: rs(2000), cashOut: rs(1000) },
-          { userId: meera.id, buyIn: rs(2000), cashOut: rs(2400), isWinner: true },
+          // 4000 of chips out, 4000 back in.
+          { userId: ravi.id, buyIn: rs(2000), cashOut: rs(1400), isBanker: true },
+          { userId: meera.id, buyIn: rs(2000), cashOut: rs(2600) },
         ],
-        expenses: [{ type: 'DINNER', label: 'Dinner', amount: rs(600) }],
+        expenses: [{ type: 'DINNER', label: 'Dinner', amount: rs(200) }],
       })
       .expect(201);
     return response.body.game;
   }
 
-  it('records a game with players and what the night cost', async () => {
+  it('records the chips, the banker, and what the night cost', async () => {
     const game = await createGame();
 
     expect(game.playerCount).toBe(2);
-    // 4000 in, 3400 taken home, 600 on dinner.
-    expect(game.totals).toMatchObject({ buyIn: rs(4000), cashOut: rs(3400), dinner: rs(600) });
+    expect(game.totals).toMatchObject({ buyIn: rs(4000), cashOut: rs(4000), dinner: rs(200) });
     expect(game.balanced).toBe(true);
-    expect(game.winner.displayName).toBe('Meera');
-
-    const raviLine = game.players.find((p: { userId: string }) => p.userId === ravi.id);
-    expect(raviLine.net).toBe(rs(-1000));
+    expect(game.banker.displayName).toBe('Ravi');
   });
 
-  it('puts dinner on the winner without being told who paid', async () => {
+  it('works out the winner from the numbers, with nobody marking anything', async () => {
     const game = await createGame();
-    expect(game.expenses[0].paidBy.displayName).toBe('Meera');
+    expect(game.topWinner.displayName).toBe('Meera');
+
+    const meera = game.players.find((p: { userId: string }) => p.userId === meera_id());
+    expect(meera).toMatchObject({ tableNet: rs(600), expenseShare: rs(200), net: rs(400) });
+    expect(meera.isTopWinner).toBe(true);
+    function meera_id() {
+      return game.players.find((p: { displayName: string }) => p.displayName === 'Meera').userId;
+    }
   });
 
-  it('refuses dinner until somebody is marked as the winner', async () => {
-    const response = await request(app)
-      .post('/api/games')
-      .set(auth(adminToken))
-      .send({
-        playedOn: new Date().toISOString(),
-        players: [{ userId: ravi.id, buyIn: rs(1000), cashOut: rs(400) }],
-        expenses: [{ type: 'DINNER', amount: rs(600) }],
-      })
-      .expect(400);
-    expect(response.body.error.message).toMatch(/who won/i);
+  it('puts dinner on the top winner without being told who', async () => {
+    const game = await createGame();
+    const dinner = game.expenses.find((e: { type: string }) => e.type === 'DINNER');
+    expect(dinner.carriedBy).toHaveLength(1);
+    expect(dinner.carriedBy[0].displayName).toBe('Meera');
   });
 
-  it('moves the dinner bill when the crown moves', async () => {
+  it('moves the dinner bill when a corrected cash-out changes who won', async () => {
     const game = await createGame();
     const raviSeat = game.players.find((p: { userId: string }) => p.userId === ravi.id);
 
+    // Ravi actually finished with far more than was first typed in.
     const updated = await request(app)
       .patch(`/api/games/${game.id}/players/${raviSeat.id}`)
       .set(auth(adminToken))
-      .send({ isWinner: true })
+      .send({ cashOut: rs(3000) })
       .expect(200);
 
-    expect(updated.body.game.winner.displayName).toBe('Ravi');
-    expect(updated.body.game.expenses[0].paidBy.displayName).toBe('Ravi');
-    // Only ever one winner.
-    expect(updated.body.game.players.filter((p: { isWinner: boolean }) => p.isWinner)).toHaveLength(1);
+    expect(updated.body.game.topWinner.displayName).toBe('Ravi');
+    const dinner = updated.body.game.expenses.find((e: { type: string }) => e.type === 'DINNER');
+    expect(dinner.carriedBy[0].displayName).toBe('Ravi');
   });
 
-  it('lets a non-dinner cost be attributed to anyone at the table', async () => {
+  it('splits a non-dinner cost between whoever chipped in', async () => {
     const game = await createGame();
     const response = await request(app)
       .post(`/api/games/${game.id}/expenses`)
       .set(auth(adminToken))
-      .send({ type: 'CARDS', label: 'New decks', amount: rs(200), paidById: ravi.id })
+      .send({ type: 'CARDS', label: 'New decks', amount: rs(300), shareUserIds: [ravi.id, meera.id] })
       .expect(201);
 
     const cards = response.body.game.expenses.find((e: { type: string }) => e.type === 'CARDS');
-    expect(cards.paidBy.displayName).toBe('Ravi');
-    expect(response.body.game.totals.otherExpenses).toBe(rs(200));
+    expect(cards.carriedBy).toHaveLength(2);
+    const ravRow = response.body.game.players.find((p: { userId: string }) => p.userId === ravi.id);
+    expect(ravRow.expenseShare).toBe(rs(150));
   });
 
-  it('will not take a cost paid by someone who was not there', async () => {
+  it('insists a non-dinner cost names who is covering it', async () => {
+    const game = await createGame();
+    const response = await request(app)
+      .post(`/api/games/${game.id}/expenses`)
+      .set(auth(adminToken))
+      .send({ type: 'TRAVEL', amount: rs(300) })
+      .expect(400);
+    expect(response.body.error.message).toMatch(/who is covering/i);
+  });
+
+  it('will not let someone outside the game carry a cost', async () => {
     const game = await createGame();
     const outsider = await makeUser('outsider');
 
     const response = await request(app)
       .post(`/api/games/${game.id}/expenses`)
       .set(auth(adminToken))
-      .send({ type: 'TRAVEL', amount: rs(300), paidById: outsider.id })
+      .send({ type: 'TRAVEL', amount: rs(300), shareUserIds: [outsider.id] })
       .expect(400);
-    expect(response.body.error.message).toMatch(/one of the players/i);
+    expect(response.body.error.message).toMatch(/player in this game/i);
   });
 
-  it('flags a night whose numbers do not reconcile', async () => {
+  it('flags a night where the chips do not add up', async () => {
     const response = await request(app)
       .post('/api/games')
       .set(auth(adminToken))
       .send({
         playedOn: new Date().toISOString(),
         players: [
-          { userId: ravi.id, buyIn: rs(1000), cashOut: rs(500), isWinner: true },
+          { userId: ravi.id, buyIn: rs(1000), cashOut: rs(500) },
           { userId: meera.id, buyIn: rs(1000), cashOut: rs(1000) },
         ],
       })
       .expect(201);
 
     expect(response.body.game.balanced).toBe(false);
-    // 2000 in, 1500 out, nothing spent - 500 unaccounted for.
     expect(response.body.game.totals.difference).toBe(rs(500));
+  });
+
+  it('keeps at most one banker', async () => {
+    const game = await createGame();
+    const meeraSeat = game.players.find((p: { userId: string }) => p.userId === meera.id);
+
+    const updated = await request(app)
+      .patch(`/api/games/${game.id}/players/${meeraSeat.id}`)
+      .set(auth(adminToken))
+      .send({ isBanker: true })
+      .expect(200);
+
+    expect(updated.body.game.players.filter((p: { isBanker: boolean }) => p.isBanker)).toHaveLength(1);
+    expect(updated.body.game.banker.displayName).toBe('Meera');
   });
 
   it('lets a player read games but not create them', async () => {
@@ -355,9 +377,18 @@ describe('history and stats', () => {
       .set(auth(playerToken))
       .expect(200);
 
-    const names = response.body.leaderboard.map((row: { displayName: string }) => row.displayName);
-    expect(names[0]).toBe('Ravi');
-    expect(names[names.length - 1]).toBe('Meera');
+    const rows = response.body.leaderboard as Array<{
+      displayName: string;
+      stats: { gamesPlayed: number };
+    }>;
+
+    const played = rows.filter((row) => row.stats.gamesPlayed > 0).map((row) => row.displayName);
+    expect(played[0]).toBe('Ravi');
+    expect(played[played.length - 1]).toBe('Meera');
+
+    // Somebody who has never sat down does not lead the table on nil.
+    expect(rows[rows.length - 1]?.displayName).toBe('Admin');
+    expect(rows[rows.length - 1]?.stats.gamesPlayed).toBe(0);
   });
 
   it('sums the dashboard for whoever is signed in', async () => {

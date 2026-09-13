@@ -50,7 +50,7 @@ export interface GameTotals {
   dinner: number;
   otherExpenses: number;
   expenses: number;
-  /** buyIn - cashOut - expenses. Zero when the night reconciles. */
+  /** buyIn - cashOut. Zero when every chip is accounted for. */
   difference: number;
 }
 
@@ -60,11 +60,18 @@ export interface GamePlayerLine {
   username: string;
   displayName: string;
   avatarColor: string | null;
+  /** Chips bought from the banker. */
   buyIn: number;
+  /** Chips cashed back in, before the night's costs come off. */
   cashOut: number;
-  isWinner: boolean;
+  isBanker: boolean;
   notes: string | null;
+  tableNet: number;
+  expenseShare: number;
+  /** What the night actually came to for them. */
   net: number;
+  isWinner: boolean;
+  isTopWinner: boolean;
 }
 
 export interface Expense {
@@ -72,7 +79,8 @@ export interface Expense {
   type: ExpenseType;
   label: string | null;
   amount: number;
-  paidBy: PersonRef;
+  /** Who is carrying it. Dinner names the top winner; others name who chipped in. */
+  carriedBy: Array<{ userId: string; displayName: string }>;
 }
 
 export interface GameSummary {
@@ -83,7 +91,7 @@ export interface GameSummary {
   playerCount: number;
   totals: GameTotals;
   balanced: boolean;
-  winner: { userId: string; displayName: string } | null;
+  topWinner: { userId: string; displayName: string } | null;
   players: Array<{ userId: string; displayName: string; avatarColor: string | null; net: number }>;
 }
 
@@ -101,7 +109,8 @@ export interface Game {
   expenses: Expense[];
   totals: GameTotals;
   balanced: boolean;
-  winner: { userId: string; displayName: string; net: number } | null;
+  banker: { userId: string; displayName: string } | null;
+  topWinner: { userId: string; displayName: string; net: number; tableNet: number } | null;
 }
 
 export interface PlayerStats {
@@ -125,8 +134,11 @@ export interface HistoryRow {
   playerCount: number;
   buyIn: number;
   cashOut: number;
+  tableNet: number;
+  expenseShare: number;
   net: number;
   isWinner: boolean;
+  isTopWinner: boolean;
 }
 
 export interface Dashboard {
@@ -145,7 +157,7 @@ export interface GamePlayerInput {
   userId: string;
   buyIn?: number;
   cashOut?: number;
-  isWinner?: boolean;
+  isBanker?: boolean;
   notes?: string;
 }
 
@@ -153,6 +165,6 @@ export interface ExpenseInput {
   type: ExpenseType;
   amount: number;
   label?: string;
-  /** Left out for dinner - the server puts that on the winner. */
-  paidById?: string;
+  /** Who is chipping in. Left out for dinner - that lands on the top winner. */
+  shareUserIds?: string[];
 }

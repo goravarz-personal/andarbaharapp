@@ -59,51 +59,56 @@ async function seedDemo(adminId: string) {
     (typeof people)[number],
   ];
 
-  // Night one: Meera runs away with it and buys dinner out of her winnings.
-  // 8000 into the pot, 2400 of it spent, 5600 handed back out.
+  // Night one. Everyone buys 2000 of chips from Ravi, who holds the bank.
+  // 8000 of chips out, 8000 back in. Meera wins the most, so dinner is hers.
   const gameOne = await prisma.game.create({
     data: {
       playedOn: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000),
-      title: 'Diwali warm-up',
-      location: "Ravi's place",
+      title: 'Saturday-Regular',
+      location: 'Katte Room',
       createdById: adminId,
       players: {
         create: [
-          { userId: ravi.id, buyIn: toMinor(2000), cashOut: toMinor(1000) },
-          { userId: meera.id, buyIn: toMinor(2000), cashOut: toMinor(3200), isWinner: true },
-          { userId: arjun.id, buyIn: toMinor(2000), cashOut: toMinor(800) },
-          { userId: sana.id, buyIn: toMinor(2000), cashOut: toMinor(600) },
+          { userId: ravi.id, buyIn: toMinor(2000), cashOut: toMinor(1800), isBanker: true },
+          { userId: meera.id, buyIn: toMinor(2000), cashOut: toMinor(3800) },
+          { userId: arjun.id, buyIn: toMinor(2000), cashOut: toMinor(1400) },
+          { userId: sana.id, buyIn: toMinor(2000), cashOut: toMinor(1000) },
         ],
       },
       expenses: {
         create: [
-          { label: 'Biryani and drinks', amount: toMinor(2000), type: 'DINNER', paidById: meera.id },
-          { label: 'New decks', amount: toMinor(400), type: 'CARDS', paidById: arjun.id },
+          // No shares: dinner lands on whoever won the most.
+          { label: 'Biryani and drinks', amount: toMinor(1200), type: 'DINNER' },
+          // Ravi and Arjun went halves on the new decks.
+          {
+            label: 'New decks',
+            amount: toMinor(400),
+            type: 'CARDS',
+            shares: { create: [{ userId: ravi.id }, { userId: arjun.id }] },
+          },
         ],
       },
     },
   });
 
-  // Night two: Arjun's turn, so the pizza is on him.
-  // 12000 into the pot, 1800 of it on pizza, 10200 handed back out.
+  // Night two. Sana banks it. Arjun takes the most off the table and buys the
+  // pizza; Ravi also finishes ahead, but the bill is not his to carry.
   const gameTwo = await prisma.game.create({
     data: {
       playedOn: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000),
-      title: 'Saturday regular',
-      location: "Sana's terrace",
+      title: 'Wednesday-Regular',
+      location: 'Katte Room',
       createdById: adminId,
       players: {
         create: [
-          { userId: ravi.id, buyIn: toMinor(3000), cashOut: toMinor(3000) },
-          { userId: meera.id, buyIn: toMinor(3000), cashOut: toMinor(900) },
-          { userId: arjun.id, buyIn: toMinor(3000), cashOut: toMinor(4500), isWinner: true },
-          { userId: sana.id, buyIn: toMinor(3000), cashOut: toMinor(1800) },
+          { userId: ravi.id, buyIn: toMinor(3000), cashOut: toMinor(3300) },
+          { userId: meera.id, buyIn: toMinor(3000), cashOut: toMinor(1200) },
+          { userId: arjun.id, buyIn: toMinor(3000), cashOut: toMinor(5400) },
+          { userId: sana.id, buyIn: toMinor(3000), cashOut: toMinor(2100), isBanker: true },
         ],
       },
       expenses: {
-        create: [
-          { label: 'Pizza', amount: toMinor(1800), type: 'DINNER', paidById: arjun.id },
-        ],
+        create: [{ label: 'Pizza', amount: toMinor(1800), type: 'DINNER' }],
       },
     },
   });

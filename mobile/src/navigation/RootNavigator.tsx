@@ -67,7 +67,7 @@ function MainTabs() {
         name="Home"
         component={DashboardScreen}
         // The header says the app name; the tab just says where you are.
-        options={{ title: 'AadarBahar', tabBarLabel: 'Home' }}
+        options={{ title: 'AndarBahar', tabBarLabel: 'Home' }}
       />
       <Tabs.Screen name="Games" component={GamesScreen} options={{ title: 'Games' }} />
       <Tabs.Screen name="Players" component={PlayersScreen} options={{ title: 'Players' }} />

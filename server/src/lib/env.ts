@@ -19,7 +19,7 @@ function required(name: string, fallback?: string): string {
 }
 
 /** Only safe off the public internet. Production must set its own. */
-const developmentSecret = 'aadarbahar-development-secret-change-me-please';
+const developmentSecret = 'andarbahar-development-secret-change-me-please';
 
 export const env = {
   nodeEnv,

@@ -1,4 +1,4 @@
-# AadarBaharApp
+# AndarBaharApp
 
 A game-night ledger for iOS and Android. It keeps track of who played, what
 they put in, what they took out, who won, and what the night cost.
@@ -14,28 +14,36 @@ records the games and manages the group.
 
 ## What it does
 
-**Games.** Date, location, everyone at the table, each player's buy-in and
-cash-out, and who won. The app adds the night up as you type and tells you when
-it does not reconcile, before you save something that will cause an argument
-later.
+**Games.** Date, where it was played, who sat down, and who held the bank.
+The name and the room fill themselves in — *Saturday-Regular*, *Katte Room* —
+so recording a night is mostly typing numbers.
+
+**Chips.** *Cash-in* is what a player bought from the banker; *cash-out* is
+what they cashed back in, before any of the night's costs. Chips come from the
+banker and go back to the banker, so the two totals have to match:
+
+```
+total cash-in  =  total cash-out
+```
+
+The app checks that as you type and says how far out it is, rather than
+quietly recording a night that does not add up.
 
 **What the night cost.** Dinner, drinks, the new decks, the cab — picked from a
-list rather than typed out. Dinner is the default, and dinner is always on the
-winner, so there is nothing to choose and nothing to get wrong. Anything else
-gets whoever actually paid.
+list rather than typed out, with dinner the default. **Dinner is always on
+whoever won the most**, worked out from the numbers, so there is nothing to
+choose. Correct someone's cash-out weeks later and the bill follows whoever
+that makes the top winner. Anything else is carried by whoever says they will —
+one person, or split evenly between several.
 
-**The arithmetic.** Money changes hands at the table, so nothing is owed
-afterwards. The pot covers what everyone takes home *and* what the night cost:
+**Net.** A player's real result, worked out for them:
 
 ```
-total buy-in  =  total cash-out  +  expenses
+net  =  (cash-out - cash-in)  -  their share of the night's costs
 ```
 
-A player's result is what they took home minus what they put in. The winner's
-cash-out is already smaller for having bought dinner, which is exactly the
-house rule this app exists to keep track of. When those two sides do not match,
-the app says so and by how much, rather than quietly recording a night that
-does not add up.
+Nobody is marked as the winner by hand. Anyone who finishes ahead counts as a
+win; the single biggest result is the one who buys dinner.
 
 **Players.** Add someone and they get their own login on the spot, with a
 one-time password you can send them. Every player sees every game, the
@@ -142,20 +150,20 @@ order, so the shares always add back up to exactly what was spent.
 
 ### Ledgers are derived, never stored
 
-A player's net for a game is worked out from the game as it stands right now:
-
-```
-net = cash-out - buy-in
-```
-
-Nothing is cached. Correct a buy-in three weeks later and every history,
-statistic and leaderboard position follows automatically.
+Nothing about a result is saved — not the net, not who won, not who owes for
+dinner. It is all worked out from the chips and the costs as they stand right
+now, so correcting a cash-out three weeks later moves every number that depends
+on it, including which player the dinner bill lands on.
 `server/src/services/ledger.service.ts` holds the whole calculation, and it is
 the part covered by the most tests.
 
+The top winner is judged on the **table** result rather than the final net, and
+deliberately so: dinner lands on that player, so picking them from a number
+dinner has already changed would chase its own tail.
+
 Note that the table is collectively *down* by whatever the night cost — that
 money went to the restaurant. Sum everyone's net for a game and you get the
-expenses back, negated. That is the books being right, not wrong.
+costs back, negated. That is the books being right, not wrong.
 
 ### Who can do what
 
@@ -169,11 +177,12 @@ expenses back, negated. That is the books being right, not wrong.
 
 A few rules are deliberate rather than incidental:
 
-- **Dinner is always on the winner**, resolved by the server rather than taken
-  from whatever the app sends. Move the crown and the bill moves with it.
-- **A game has at most one winner**, because the night's costs come out of
-  their winnings and "split between the winners" is not a rule anyone wants to
-  argue about at midnight.
+- **Dinner is always on whoever won the most**, resolved by the server from the
+  numbers rather than taken from whatever the app sends.
+- **Winning is not something anyone ticks.** Finish ahead once the costs come
+  off and it counts as a win; several people can win the same night, but only
+  the biggest result buys dinner.
+- **One banker per game**, because somebody has to be holding the cash.
 - **The last active admin cannot be demoted or deactivated**, so the group
   cannot lock itself out.
 - **Deleting a player who has played deactivates them instead**, so past games
@@ -187,7 +196,7 @@ A few rules are deliberate rather than incidental:
 ## Development
 
 ```bash
-npm test           # 40 tests: the night's arithmetic and the API end to end
+npm test           # 46 tests: the night's arithmetic and the API end to end
 npm run typecheck  # both halves
 npm run server     # API with reload on save
 npm run mobile     # Expo dev server
@@ -197,8 +206,8 @@ The tests need a Postgres to talk to — `docker compose up -d` provides one, an
 they use a separate `aadarbahar_test` database so your own data is never
 touched. Point `TEST_DATABASE_URL` somewhere else if you prefer. They cover the
 night's arithmetic (balancing, rounding, what happens when it does not add up)
-and the API end to end: sign-in, roles, game CRUD, the dinner-on-the-winner
-rule, history and statistics.
+and the API end to end: sign-in, roles, game CRUD, the dinner-on-the-top-winner
+rule, splitting a cost between players, history and statistics.
 
 ### API
 

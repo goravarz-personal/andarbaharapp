@@ -85,7 +85,7 @@ export function AddPlayerScreen() {
             onPress={() =>
               void Share.share({
                 message:
-                  `You're on the AadarBahar ledger.\n\n` +
+                  `You're on the AndarBahar ledger.\n\n` +
                   `Username: ${created.username}\n` +
                   `Password: ${created.password}\n\n` +
                   `Sign in and the app will ask you to pick your own password.`,

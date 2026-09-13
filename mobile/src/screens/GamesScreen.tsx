@@ -90,10 +90,10 @@ export function GamesScreen() {
                   ) : null}
                 </View>
 
-                {game.winner ? (
+                {game.topWinner ? (
                   <View style={styles.winnerRow}>
                     <Ionicons name="trophy" size={13} color={colors.gold} />
-                    <Text style={styles.winnerText}>{game.winner.displayName} won</Text>
+                    <Text style={styles.winnerText}>{game.topWinner.displayName} won the most</Text>
                   </View>
                 ) : null}
 
@@ -101,8 +101,7 @@ export function GamesScreen() {
                   <View style={styles.warnRow}>
                     <Ionicons name="alert-circle-outline" size={13} color={colors.warn} />
                     <Text style={styles.warnText}>
-                      {formatMoney(Math.abs(game.totals.difference))}{' '}
-                      {game.totals.difference > 0 ? 'unaccounted for' : 'more paid out than came in'}
+                      Chips out by {formatMoney(Math.abs(game.totals.difference))}
                     </Text>
                   </View>
                 ) : null}
