@@ -21,7 +21,7 @@ import { fromDateInput, formatDate, shiftDays, toDateInput, todayInput } from '.
 import { colors, font, radius, spacing } from '../theme';
 import type { RootStackParamList } from '../navigation/types';
 import { confirm, notify } from '../utils/dialog';
-import type { ExpenseInput, Game, Player } from '../api/types';
+import { EXPENSE_TYPE_LABELS, type ExpenseInput, type Game, type Player } from '../api/types';
 
 interface SeatDraft {
   userId: string;
@@ -110,8 +110,10 @@ export function GameEditorScreen() {
   const totals = useMemo(() => {
     const buyIn = seats.reduce((sum, seat) => sum + (parseRupees(seat.buyIn) ?? 0), 0);
     const cashOut = seats.reduce((sum, seat) => sum + (parseRupees(seat.cashOut) ?? 0), 0);
-    return { buyIn, cashOut, difference: cashOut - buyIn };
-  }, [seats]);
+    const spent = expenses.reduce((sum, expense) => sum + expense.amount, 0);
+    // What went in has to cover what came out plus what was spent.
+    return { buyIn, cashOut, spent, difference: buyIn - cashOut - spent };
+  }, [seats, expenses]);
 
   function addSeat(player: Player) {
     setSeats((current) => [
@@ -130,6 +132,19 @@ export function GameEditorScreen() {
   function updateSeat(userId: string, patch: Partial<SeatDraft>) {
     setSeats((current) =>
       current.map((seat) => (seat.userId === userId ? { ...seat, ...patch } : seat)),
+    );
+  }
+
+  /**
+   * One winner only. The night's costs come out of their winnings, so "both of
+   * them won" is not a thing the ledger can express.
+   */
+  function crownWinner(userId: string) {
+    setSeats((current) =>
+      current.map((seat) => ({
+        ...seat,
+        isWinner: seat.userId === userId ? !seat.isWinner : false,
+      })),
     );
   }
 
@@ -279,11 +294,11 @@ export function GameEditorScreen() {
                   {seat.displayName}
                 </Text>
                 <Pressable
-                  onPress={() => updateSeat(seat.userId, { isWinner: !seat.isWinner })}
+                  onPress={() => crownWinner(seat.userId)}
                   hitSlop={8}
                   style={[styles.trophyButton, seat.isWinner && styles.trophyButtonOn]}
                   accessibilityRole="button"
-                  accessibilityLabel={`Mark ${seat.displayName} as a winner`}
+                  accessibilityLabel={`Mark ${seat.displayName} as the winner`}
                   accessibilityState={{ selected: seat.isWinner }}
                 >
                   <Ionicons
@@ -321,21 +336,25 @@ export function GameEditorScreen() {
           {/* Running check that the chips add up before anything is saved. */}
           <Card style={styles.tallyCard}>
             <View style={styles.tallyRow}>
-              <Text style={styles.tallyLabel}>Total in</Text>
+              <Text style={styles.tallyLabel}>Everyone put in</Text>
               <Text style={styles.tallyValue}>{formatMoney(totals.buyIn)}</Text>
             </View>
             <View style={styles.tallyRow}>
-              <Text style={styles.tallyLabel}>Total out</Text>
-              <Text style={styles.tallyValue}>{formatMoney(totals.cashOut)}</Text>
+              <Text style={styles.tallyLabel}>Taken home</Text>
+              <Text style={styles.tallyValue}>− {formatMoney(totals.cashOut)}</Text>
+            </View>
+            <View style={styles.tallyRow}>
+              <Text style={styles.tallyLabel}>Spent on the night</Text>
+              <Text style={styles.tallyValue}>− {formatMoney(totals.spent)}</Text>
             </View>
             <View style={[styles.tallyRow, styles.tallyTotal]}>
               <Text style={styles.tallyLabel}>
-                {totals.difference === 0 ? 'Balanced' : 'Out by'}
+                {totals.difference === 0 ? 'Adds up' : 'Left over'}
               </Text>
               {totals.difference === 0 ? (
-                <Badge label="Adds up" tone="win" icon="checkmark-circle" />
+                <Badge label="Balanced" tone="win" icon="checkmark-circle" />
               ) : (
-                <Text style={styles.tallyBad}>{formatMoney(Math.abs(totals.difference))}</Text>
+                <Text style={styles.tallyBad}>{formatMoney(totals.difference)}</Text>
               )}
             </View>
           </Card>
@@ -368,38 +387,40 @@ export function GameEditorScreen() {
       {!isEditing ? (
         <>
           <SectionHeader
-            title="Dinner and expenses"
+            title="What the night cost"
             action={showExpenseForm ? 'Close' : 'Add'}
             onAction={() => setShowExpenseForm((open) => !open)}
           />
 
           {expenses.length > 0 ? (
             <Card padded={false} style={styles.expenseList}>
-              {expenses.map((expense, index) => (
-                <View key={`${expense.label}-${index}`} style={styles.expenseRow}>
-                  <View style={styles.expenseBody}>
-                    <Text style={styles.expenseLabel}>{expense.label}</Text>
-                    <Text style={styles.expenseMeta}>
-                      {seats.find((seat) => seat.userId === expense.paidById)?.displayName ?? 'Someone'}{' '}
-                      paid ·{' '}
-                      {expense.splitMode === 'EQUAL'
-                        ? 'split equally'
-                        : expense.splitMode === 'PAYER'
-                          ? 'their treat'
-                          : 'custom split'}
-                    </Text>
+              {expenses.map((expense, index) => {
+                const payer = expense.paidById
+                  ? seats.find((seat) => seat.userId === expense.paidById)?.displayName
+                  : seats.find((seat) => seat.isWinner)?.displayName;
+                return (
+                  <View key={`${expense.type}-${index}`} style={styles.expenseRow}>
+                    <View style={styles.expenseBody}>
+                      <Text style={styles.expenseLabel}>
+                        {EXPENSE_TYPE_LABELS[expense.type] ?? 'Cost'}
+                      </Text>
+                      <Text style={styles.expenseMeta} numberOfLines={1}>
+                        {expense.label ? `${expense.label} · ` : ''}
+                        {payer ? `${payer} paid` : 'on the winner'}
+                      </Text>
+                    </View>
+                    <Text style={styles.expenseAmount}>{formatMoney(expense.amount)}</Text>
+                    <Pressable
+                      onPress={() =>
+                        setExpenses((current) => current.filter((_, position) => position !== index))
+                      }
+                      hitSlop={10}
+                    >
+                      <Ionicons name="close-circle" size={18} color={colors.inkFaint} />
+                    </Pressable>
                   </View>
-                  <Text style={styles.expenseAmount}>{formatMoney(expense.amount)}</Text>
-                  <Pressable
-                    onPress={() =>
-                      setExpenses((current) => current.filter((_, position) => position !== index))
-                    }
-                    hitSlop={10}
-                  >
-                    <Ionicons name="close-circle" size={18} color={colors.inkFaint} />
-                  </Pressable>
-                </View>
-              ))}
+                );
+              })}
             </Card>
           ) : null}
 
@@ -418,7 +439,7 @@ export function GameEditorScreen() {
         </>
       ) : (
         <Text style={styles.editNote}>
-          Dinner and other expenses are added from the game&apos;s own screen.
+          What the night cost is added from the game&apos;s own screen.
         </Text>
       )}
 

@@ -8,9 +8,7 @@ export const app: Express = createApp();
 
 /** Wipes every table. Order matters - children before parents. */
 export async function resetDb(): Promise<void> {
-  await prisma.expenseShare.deleteMany();
   await prisma.expense.deleteMany();
-  await prisma.settlement.deleteMany();
   await prisma.gamePlayer.deleteMany();
   await prisma.game.deleteMany();
   await prisma.user.deleteMany();

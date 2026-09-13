@@ -27,6 +27,7 @@ export function AddExpenseScreen() {
           userId: player.userId,
           displayName: player.displayName,
           avatarColor: player.avatarColor,
+          isWinner: player.isWinner,
         })),
       );
     } catch (caught) {

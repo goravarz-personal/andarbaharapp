@@ -8,7 +8,6 @@ export type RootStackParamList = {
   PlayerDetail: { playerId: string };
   AddPlayer: undefined;
   AddExpense: { gameId: string };
-  RecordPayment: undefined;
   ChangePassword: { forced?: boolean } | undefined;
   ServerSettings: undefined;
   ManageRoster: undefined;
@@ -18,7 +17,6 @@ export type TabParamList = {
   Home: undefined;
   Games: undefined;
   Players: undefined;
-  Settle: undefined;
   Profile: undefined;
 };
 

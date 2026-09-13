@@ -5,8 +5,15 @@
 // table. Format for display only at the edges.
 //
 // Enum-ish columns are Strings validated with zod at the API boundary (see
-// src/types/enums.ts) rather than database enums, so that adding a split mode
-// or a game status is a code change and not a migration.
+// src/types/enums.ts) rather than database enums, so that adding an expense
+// type is a code change and not a migration.
+//
+// The books balance when:   total buy-in  =  total cash-out  +  expenses
+//
+// Money physically changes hands at the table, so there is nothing to chase
+// afterwards: a player's cash-out already includes whatever they won or lost.
+// The night's costs come out of the pot, which is why the pot is bigger than
+// the sum of what everyone took home.
 
 datasource db {
   provider = "postgresql"
@@ -35,12 +42,9 @@ model User {
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 
-  gameEntries       GamePlayer[]
-  createdGames      Game[]         @relation("GameCreatedBy")
-  expensesPaid      Expense[]      @relation("ExpensePaidBy")
-  expenseShares     ExpenseShare[]
-  settlementsOwed   Settlement[]   @relation("SettlementFrom")
-  settlementsOwedTo Settlement[]   @relation("SettlementTo")
+  gameEntries  GamePlayer[]
+  createdGames Game[]       @relation("GameCreatedBy")
+  expensesPaid Expense[]    @relation("ExpensePaidBy")
 
   @@index([role])
 }
@@ -52,28 +56,25 @@ model Game {
   title       String?
   location    String?
   notes       String?
-  /// "OPEN" | "SETTLED"
-  status      String   @default("OPEN")
   createdById String
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  createdBy   User         @relation("GameCreatedBy", fields: [createdById], references: [id])
-  players     GamePlayer[]
-  expenses    Expense[]
-  settlements Settlement[]
+  createdBy User         @relation("GameCreatedBy", fields: [createdById], references: [id])
+  players   GamePlayer[]
+  expenses  Expense[]
 
   @@index([playedOn])
-  @@index([status])
 }
 
 /// A player's seat in one game: what they put in, what they took out.
 model GamePlayer {
-  id       String  @id @default(cuid())
-  gameId   String
-  userId   String
-  buyIn    Int     @default(0)
-  cashOut  Int     @default(0)
+  id      String  @id @default(cuid())
+  gameId  String
+  userId  String
+  buyIn   Int     @default(0)
+  cashOut Int     @default(0)
+  /// At most one per game - the winner is who the night's costs come out of.
   isWinner Boolean @default(false)
   notes    String?
 
@@ -84,63 +85,22 @@ model GamePlayer {
   @@index([userId])
 }
 
-/// Dinner or any other cost attached to a game.
+/// What the night cost. Paid out of the pot, so it never splits per player.
 model Expense {
-  id        String @id @default(cuid())
-  gameId    String
-  /// "DINNER" | "OTHER"
-  category  String @default("OTHER")
-  label     String
-  amount    Int
-  paidById  String
-  /// "EQUAL" (split across seated players) | "CUSTOM" (explicit shares) | "PAYER" (payer treats everyone)
-  splitMode String @default("EQUAL")
+  id       String  @id @default(cuid())
+  gameId   String
+  /// See ExpenseTypeSchema in src/types/enums.ts.
+  type     String  @default("DINNER")
+  /// Optional note - "biryani and drinks". The type carries the meaning.
+  label    String?
+  amount   Int
+  paidById String
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  game   Game           @relation(fields: [gameId], references: [id], onDelete: Cascade)
-  paidBy User           @relation("ExpensePaidBy", fields: [paidById], references: [id])
-  shares ExpenseShare[]
+  game   Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  paidBy User @relation("ExpensePaidBy", fields: [paidById], references: [id])
 
   @@index([gameId])
-}
-
-/// Who owes what slice of an expense. Shares always add up to Expense.amount.
-model ExpenseShare {
-  id        String @id @default(cuid())
-  expenseId String
-  userId    String
-  amount    Int
-
-  expense Expense @relation(fields: [expenseId], references: [id], onDelete: Cascade)
-  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([expenseId, userId])
-}
-
-/// "X pays Y this much." Generated when a game is settled, or added by hand.
-model Settlement {
-  id             String    @id @default(cuid())
-  gameId         String?
-  fromUserId     String
-  toUserId       String
-  amount         Int
-  /// "PENDING" | "PAID"
-  status         String    @default("PENDING")
-  /// "AUTO" (derived from a game) | "MANUAL" (recorded by hand)
-  kind           String    @default("AUTO")
-  note           String?
-  paidAt         DateTime?
-  markedPaidById String?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
-
-  game     Game? @relation(fields: [gameId], references: [id], onDelete: Cascade)
-  fromUser User  @relation("SettlementFrom", fields: [fromUserId], references: [id], onDelete: Cascade)
-  toUser   User  @relation("SettlementTo", fields: [toUserId], references: [id], onDelete: Cascade)
-
-  @@index([gameId])
-  @@index([fromUserId, status])
-  @@index([toUserId, status])
 }

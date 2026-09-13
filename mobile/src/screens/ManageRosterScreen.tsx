@@ -4,7 +4,16 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import { Screen } from '../components/Screen';
-import { Avatar, Badge, Button, Card, ErrorNotice, LoadingView, SectionHeader } from '../components';
+import {
+  Avatar,
+  Badge,
+  Button,
+  Card,
+  ErrorNotice,
+  LoadingView,
+  SectionHeader,
+  TextField,
+} from '../components';
 import { useApiQuery } from '../state/useApiQuery';
 import { useAuth } from '../state/AuthContext';
 import { colors, font, spacing } from '../theme';
@@ -17,6 +26,8 @@ export function ManageRosterScreen() {
   const { api, user } = useAuth();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [working, setWorking] = useState<string | null>(null);
+  /** Which player's name is being edited, and what it has been changed to. */
+  const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null);
 
   const { data, loading, error, refreshing, refetch } = useApiQuery<{ players: Player[] }>((client) =>
     client.players(true),
@@ -32,6 +43,18 @@ export function ManageRosterScreen() {
     } finally {
       setWorking(null);
     }
+  }
+
+  async function saveName() {
+    if (!renaming) return;
+    const name = renaming.name.trim();
+    if (!name) {
+      notify('Name cannot be empty', 'Give them something to be called.');
+      return;
+    }
+    const id = renaming.id;
+    setRenaming(null);
+    await act(id, () => api.updatePlayer(id, { displayName: name }), 'Could not rename them');
   }
 
   function resetPassword(player: Player) {
@@ -113,6 +136,11 @@ export function ManageRosterScreen() {
           player={player}
           isMe={player.id === user?.id}
           busy={working === player.id}
+          renaming={renaming?.id === player.id ? renaming.name : null}
+          onRenameChange={(name) => setRenaming({ id: player.id, name })}
+          onRenameStart={() => setRenaming({ id: player.id, name: player.displayName })}
+          onRenameCancel={() => setRenaming(null)}
+          onRenameSave={saveName}
           onOpen={() => navigation.navigate('PlayerDetail', { playerId: player.id })}
           onResetPassword={() => resetPassword(player)}
           onToggleRole={() => toggleRole(player)}
@@ -129,6 +157,11 @@ export function ManageRosterScreen() {
               player={player}
               isMe={player.id === user?.id}
               busy={working === player.id}
+              renaming={renaming?.id === player.id ? renaming.name : null}
+              onRenameChange={(name) => setRenaming({ id: player.id, name })}
+              onRenameStart={() => setRenaming({ id: player.id, name: player.displayName })}
+              onRenameCancel={() => setRenaming(null)}
+              onRenameSave={saveName}
               onOpen={() => navigation.navigate('PlayerDetail', { playerId: player.id })}
               onResetPassword={() => resetPassword(player)}
               onToggleRole={() => toggleRole(player)}
@@ -145,6 +178,11 @@ function PlayerCard({
   player,
   isMe,
   busy,
+  renaming,
+  onRenameStart,
+  onRenameChange,
+  onRenameCancel,
+  onRenameSave,
   onOpen,
   onResetPassword,
   onToggleRole,
@@ -153,11 +191,36 @@ function PlayerCard({
   player: Player;
   isMe: boolean;
   busy: boolean;
+  /** The in-progress name, or null when this card is not being renamed. */
+  renaming: string | null;
+  onRenameStart: () => void;
+  onRenameChange: (name: string) => void;
+  onRenameCancel: () => void;
+  onRenameSave: () => void;
   onOpen: () => void;
   onResetPassword: () => void;
   onToggleRole: () => void;
   onToggleActive: () => void;
 }) {
+  if (renaming !== null) {
+    return (
+      <Card style={styles.card}>
+        <TextField
+          label={`Name for @${player.username}`}
+          value={renaming}
+          onChangeText={onRenameChange}
+          autoFocus
+          autoCapitalize="words"
+          onSubmitEditing={onRenameSave}
+        />
+        <View style={styles.renameActions}>
+          <Button label="Cancel" variant="ghost" onPress={onRenameCancel} style={styles.renameButton} />
+          <Button label="Save" onPress={onRenameSave} style={styles.renameButton} />
+        </View>
+      </Card>
+    );
+  }
+
   return (
     <Card style={[styles.card, busy && styles.busy]}>
       <Pressable onPress={onOpen} style={styles.head}>
@@ -177,7 +240,8 @@ function PlayerCard({
       </Pressable>
 
       <View style={styles.actions}>
-        <Action icon="key-outline" label="Reset password" onPress={onResetPassword} />
+        <Action icon="pencil-outline" label="Rename" onPress={onRenameStart} />
+        <Action icon="key-outline" label="Password" onPress={onResetPassword} />
         <Action
           icon={player.role === 'ADMIN' ? 'person-outline' : 'shield-checkmark-outline'}
           label={player.role === 'ADMIN' ? 'Make player' : 'Make admin'}
@@ -232,12 +296,21 @@ const styles = StyleSheet.create({
   username: { ...font.small, color: colors.inkMuted, marginTop: 1 },
   actions: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.line,
     paddingTop: spacing(3),
-    gap: spacing(2),
+    rowGap: spacing(3),
   },
-  action: { flexDirection: 'row', alignItems: 'center', gap: spacing(1), flex: 1 },
+  action: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing(1.5),
+    // Two per row on a phone, rather than four squeezed and wrapping mid-word.
+    width: '50%',
+  },
+  renameActions: { flexDirection: 'row', gap: spacing(2) },
+  renameButton: { flex: 1 },
   actionPressed: { opacity: 0.5 },
   actionText: { ...font.small, fontSize: 12, fontWeight: '600' },
 });

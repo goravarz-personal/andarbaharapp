@@ -1,8 +1,7 @@
 # AadarBaharApp
 
 A game-night ledger for iOS and Android. It keeps track of who played, what
-they put in, what they took out, who won, what dinner cost, and — the part that
-usually causes the arguments — who owes whom afterwards.
+they put in, what they took out, who won, and what the night cost.
 
 Every player gets their own login and can see the whole ledger. An admin
 records the games and manages the group.
@@ -10,38 +9,42 @@ records the games and manages the group.
 <p align="center">
   <img src="docs/screens/dashboard.png" width="30%" alt="Dashboard showing what you are owed" />
   <img src="docs/screens/game-detail.png" width="30%" alt="A game night with buy-ins, cash-outs and expenses" />
-  <img src="docs/screens/settle.png" width="30%" alt="Who owes whom" />
+  <img src="docs/screens/players.png" width="30%" alt="The leaderboard" />
 </p>
 
 ## What it does
 
 **Games.** Date, location, everyone at the table, each player's buy-in and
-cash-out, and who won. The app adds up the pot as you type and tells you when
-the cash-outs don't match the buy-ins, before you save something that will not
-reconcile.
+cash-out, and who won. The app adds the night up as you type and tells you when
+it does not reconcile, before you save something that will cause an argument
+later.
 
-**Dinner and expenses.** Any cost attached to a night, split three ways:
+**What the night cost.** Dinner, drinks, the new decks, the cab — picked from a
+list rather than typed out. Dinner is the default, and dinner is always on the
+winner, so there is nothing to choose and nothing to get wrong. Anything else
+gets whoever actually paid.
 
-| Split | What it means |
-| --- | --- |
-| `EQUAL` | Shared across everyone seated. Add a latecomer and it re-splits itself. |
-| `CUSTOM` | You set each person's share by hand. They have to add up to the total. |
-| `PAYER` | Whoever paid is treating the table and carries the whole cost. |
+**The arithmetic.** Money changes hands at the table, so nothing is owed
+afterwards. The pot covers what everyone takes home *and* what the night cost:
 
-**Settling up.** Settling a game nets each player's position — table result,
-minus their share of the expenses, plus whatever they fronted — and works out
-the *fewest* payments that clear the night. Four players settle in three
-payments, not twelve. Outstanding IOUs across all games net down to one line
-per pair of people.
+```
+total buy-in  =  total cash-out  +  expenses
+```
+
+A player's result is what they took home minus what they put in. The winner's
+cash-out is already smaller for having bought dinner, which is exactly the
+house rule this app exists to keep track of. When those two sides do not match,
+the app says so and by how much, rather than quietly recording a night that
+does not add up.
 
 **Players.** Add someone and they get their own login on the spot, with a
 one-time password you can send them. Every player sees every game, the
-leaderboard, and their own history: games played, win rate, lifetime net, best
+leaderboard, and their own history: nights played, win rate, lifetime net, best
 and worst nights.
 
-**Admin.** One account with full control: records and edits games, adds and
-removes players, promotes other admins, resets passwords, records payments by
-hand, and deletes anything that was entered wrong.
+**Admin.** One account with full control: records and edits games, adds
+players, renames anyone, promotes other admins, resets passwords, and deletes
+anything that was entered wrong.
 
 ## Getting it online
 
@@ -142,13 +145,17 @@ order, so the shares always add back up to exactly what was spent.
 A player's net for a game is worked out from the game as it stands right now:
 
 ```
-net = (cash-out - buy-in) - their share of the expenses + what they paid for
+net = cash-out - buy-in
 ```
 
 Nothing is cached. Correct a buy-in three weeks later and every history,
-statistic and leaderboard position follows automatically. `server/src/services/
-ledger.service.ts` holds the whole calculation, and it is the part covered by
-the most tests.
+statistic and leaderboard position follows automatically.
+`server/src/services/ledger.service.ts` holds the whole calculation, and it is
+the part covered by the most tests.
+
+Note that the table is collectively *down* by whatever the night cost — that
+money went to the restaurant. Sum everyone's net for a game and you get the
+expenses back, negated. That is the books being right, not wrong.
 
 ### Who can do what
 
@@ -156,16 +163,17 @@ the most tests.
 | --- | --- | --- |
 | See every game, player and payment | yes | yes |
 | Edit their own profile and password | yes | yes |
-| Confirm money paid **to them** | yes | yes |
 | Record and edit games, expenses, players | no | yes |
-| Reset passwords, change roles, delete things | no | yes |
+| Rename anyone, reset passwords, change roles | no | yes |
+| Delete games and players | no | yes |
 
 A few rules are deliberate rather than incidental:
 
-- **The player being paid confirms the payment**, not the one paying — they are
-  the one with something to lose from a wrong tap.
-- **Re-settling a game refuses to wipe payments already marked paid** unless
-  you confirm.
+- **Dinner is always on the winner**, resolved by the server rather than taken
+  from whatever the app sends. Move the crown and the bill moves with it.
+- **A game has at most one winner**, because the night's costs come out of
+  their winnings and "split between the winners" is not a rule anyone wants to
+  argue about at midnight.
 - **The last active admin cannot be demoted or deactivated**, so the group
   cannot lock itself out.
 - **Deleting a player who has played deactivates them instead**, so past games
@@ -179,7 +187,7 @@ A few rules are deliberate rather than incidental:
 ## Development
 
 ```bash
-npm test           # 53 tests: ledger maths and the API end to end
+npm test           # 40 tests: the night's arithmetic and the API end to end
 npm run typecheck  # both halves
 npm run server     # API with reload on save
 npm run mobile     # Expo dev server
@@ -187,9 +195,10 @@ npm run mobile     # Expo dev server
 
 The tests need a Postgres to talk to — `docker compose up -d` provides one, and
 they use a separate `aadarbahar_test` database so your own data is never
-touched. Point `TEST_DATABASE_URL` somewhere else if you prefer. They cover
-rounding, the three split modes, transfer minimisation, IOU netting, and the
-API end to end: sign-in, roles, game CRUD, settling, history and statistics.
+touched. Point `TEST_DATABASE_URL` somewhere else if you prefer. They cover the
+night's arithmetic (balancing, rounding, what happens when it does not add up)
+and the API end to end: sign-in, roles, game CRUD, the dinner-on-the-winner
+rule, history and statistics.
 
 ### API
 
@@ -204,18 +213,13 @@ All routes live under `/api` and need `Authorization: Bearer <token>` except
 | `GET` | `/dashboard` | Home screen figures |
 | `GET` `POST` | `/players` | Roster · add (admin) |
 | `GET` | `/players/leaderboard` | Ranked by lifetime net |
-| `GET` | `/players/:id` | Profile, stats, history, balances |
+| `GET` | `/players/:id` | Profile, stats and history |
 | `PATCH` `DELETE` | `/players/:id` | Edit · remove (admin) |
 | `POST` | `/players/:id/reset-password` | Admin |
 | `GET` `POST` | `/games` | List · record (admin) |
 | `GET` `PATCH` `DELETE` | `/games/:id` | One game |
 | `POST` `PATCH` `DELETE` | `/games/:id/players[/:seatId]` | Seats (admin) |
 | `POST` `PATCH` `DELETE` | `/games/:id/expenses[/:expenseId]` | Costs (admin) |
-| `GET` | `/games/:id/settlement-preview` | The split, without saving it |
-| `POST` | `/games/:id/settle` · `/reopen` | Admin |
-| `GET` `POST` | `/settlements` | IOUs · record one by hand (admin) |
-| `GET` | `/settlements/outstanding` | Netted per pair |
-| `PATCH` `DELETE` | `/settlements/:id` | Mark paid · remove |
 
 ### Why PostgreSQL
 

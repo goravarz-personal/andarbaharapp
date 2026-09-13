@@ -7,7 +7,7 @@ import { asyncHandler, validateBody } from '../middleware/validate';
 import { sensitiveLimiter } from '../middleware/rateLimit';
 import { createPlayerSchema, resetPasswordSchema, updatePlayerSchema } from '../types/schemas';
 import { emptyToNull, pickAvatarColor, serializeUser } from '../services/user.service';
-import { getPlayerBalances, getPlayerHistory, getLeaderboard, summarise } from '../services/stats.service';
+import { getPlayerHistory, getLeaderboard, summarise } from '../services/stats.service';
 
 export const playersRouter = Router();
 
@@ -41,13 +41,8 @@ playersRouter.get(
     const user = await prisma.user.findUnique({ where: { id } });
     if (!user) throw ApiError.notFound('No such player.');
 
-    const [history, balances] = await Promise.all([getPlayerHistory(id), getPlayerBalances(id)]);
-    res.json({
-      player: serializeUser(user),
-      stats: summarise(history),
-      history,
-      balances,
-    });
+    const history = await getPlayerHistory(id);
+    res.json({ player: serializeUser(user), stats: summarise(history), history });
   }),
 );
 
@@ -212,14 +207,5 @@ playersRouter.delete(
 
     await prisma.user.delete({ where: { id } });
     res.json({ deleted: true });
-  }),
-);
-
-/** Who the signed-in player owes, and who owes them. */
-playersRouter.get(
-  '/:id/balances',
-  asyncHandler(async (req, res) => {
-    const id = String(req.params.id);
-    res.json({ balances: await getPlayerBalances(id) });
   }),
 );

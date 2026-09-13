@@ -8,7 +8,7 @@ import { asyncHandler, validateBody } from '../middleware/validate';
 import { loginLimiter, sensitiveLimiter } from '../middleware/rateLimit';
 import { changePasswordSchema, loginSchema, updateMeSchema } from '../types/schemas';
 import { emptyToNull, serializeUser } from '../services/user.service';
-import { getPlayerBalances, getPlayerStats } from '../services/stats.service';
+import { getPlayerStats } from '../services/stats.service';
 
 export const authRouter = Router();
 
@@ -39,12 +39,11 @@ authRouter.get(
   requireAuth,
   asyncHandler(async (req, res) => {
     const me = currentUser(req);
-    const [user, stats, balances] = await Promise.all([
+    const [user, stats] = await Promise.all([
       prisma.user.findUniqueOrThrow({ where: { id: me.id } }),
       getPlayerStats(me.id),
-      getPlayerBalances(me.id),
     ]);
-    res.json({ user: serializeUser(user), stats, balances });
+    res.json({ user: serializeUser(user), stats });
   }),
 );
 

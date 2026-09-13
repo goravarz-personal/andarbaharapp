@@ -21,7 +21,7 @@ import { formatMoney } from '../utils/money';
 import { formatDate } from '../utils/date';
 import { colors, font, spacing } from '../theme';
 import type { RootStackParamList } from '../navigation/types';
-import type { Balances, HistoryRow, Player, PlayerStats } from '../api/types';
+import type { HistoryRow, Player, PlayerStats } from '../api/types';
 
 export function PlayerDetailScreen() {
   const route = useRoute<RouteProp<RootStackParamList, 'PlayerDetail'>>();
@@ -33,7 +33,6 @@ export function PlayerDetailScreen() {
     player: Player;
     stats: PlayerStats;
     history: HistoryRow[];
-    balances: Balances;
   }>((api) => api.player(playerId), [playerId]);
 
   React.useEffect(() => {
@@ -44,7 +43,7 @@ export function PlayerDetailScreen() {
   if (error && !data) return <Screen><ErrorNotice message={error} onRetry={refetch} /></Screen>;
   if (!data) return null;
 
-  const { player, stats, history, balances } = data;
+  const { player, stats, history } = data;
   const isMe = player.id === user?.id;
 
   return (
@@ -90,38 +89,6 @@ export function PlayerDetailScreen() {
         <StatTile label="Average" value={formatMoney(stats.averageNet, { signed: true })} />
       </View>
 
-      {balances.owes.length + balances.owed.length > 0 ? (
-        <>
-          <SectionHeader title="Settling up" />
-          <Card padded={false}>
-            {balances.owed.map((entry, index) => (
-              <View
-                key={`owed-${entry.person?.id ?? index}`}
-                style={[styles.balanceRow, styles.divided]}
-              >
-                <Ionicons name="arrow-down-circle" size={18} color={colors.win} />
-                <Text style={styles.balanceText}>
-                  {entry.person?.displayName ?? 'Someone'} owes {isMe ? 'you' : player.displayName}
-                </Text>
-                <Money value={entry.amount} tone="win" size="small" />
-              </View>
-            ))}
-            {balances.owes.map((entry, index) => (
-              <View
-                key={`owes-${entry.person?.id ?? index}`}
-                style={[styles.balanceRow, index < balances.owes.length - 1 && styles.divided]}
-              >
-                <Ionicons name="arrow-up-circle" size={18} color={colors.loss} />
-                <Text style={styles.balanceText}>
-                  {isMe ? 'You owe' : `${player.displayName} owes`} {entry.person?.displayName ?? 'someone'}
-                </Text>
-                <Money value={-entry.amount} tone="loss" size="small" />
-              </View>
-            ))}
-          </Card>
-        </>
-      ) : null}
-
       <SectionHeader title="Playing history" />
       {history.length === 0 ? (
         <Card>
@@ -146,7 +113,7 @@ export function PlayerDetailScreen() {
                   </Text>
                   {row.isWinner ? <Ionicons name="trophy" size={12} color={colors.gold} /> : null}
                 </View>
-                <Text style={styles.historyMeta}>
+                <Text style={styles.historyMeta} numberOfLines={1}>
                   {formatDate(row.playedOn)} · in {formatMoney(row.buyIn)} · out{' '}
                   {formatMoney(row.cashOut)}
                 </Text>
@@ -171,14 +138,6 @@ const styles = StyleSheet.create({
   tiles: { flexDirection: 'row', gap: spacing(2) },
   tilesSecond: { marginTop: spacing(2) },
 
-  balanceRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing(3),
-    paddingHorizontal: spacing(4),
-    paddingVertical: spacing(3),
-  },
-  balanceText: { ...font.small, color: colors.ink, flex: 1 },
   divided: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line },
 
   historyRow: {

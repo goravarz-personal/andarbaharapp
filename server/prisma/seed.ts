@@ -12,7 +12,6 @@ import { prisma } from '../src/lib/prisma';
 import { hashPassword } from '../src/lib/password';
 import { pickAvatarColor } from '../src/services/user.service';
 import { toMinor } from '../src/lib/money';
-import { settleGame } from '../src/services/game.service';
 
 async function upsertUser(params: {
   username: string;
@@ -60,7 +59,8 @@ async function seedDemo(adminId: string) {
     (typeof people)[number],
   ];
 
-  // Night one: Meera runs away with it, Ravi picks up dinner.
+  // Night one: Meera runs away with it and buys dinner out of her winnings.
+  // 8000 into the pot, 2400 of it spent, 5600 handed back out.
   const gameOne = await prisma.game.create({
     data: {
       playedOn: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000),
@@ -69,22 +69,23 @@ async function seedDemo(adminId: string) {
       createdById: adminId,
       players: {
         create: [
-          { userId: ravi.id, buyIn: toMinor(2000), cashOut: toMinor(1200) },
-          { userId: meera.id, buyIn: toMinor(2000), cashOut: toMinor(4100), isWinner: true },
-          { userId: arjun.id, buyIn: toMinor(2000), cashOut: toMinor(1500) },
-          { userId: sana.id, buyIn: toMinor(2000), cashOut: toMinor(1200) },
+          { userId: ravi.id, buyIn: toMinor(2000), cashOut: toMinor(1000) },
+          { userId: meera.id, buyIn: toMinor(2000), cashOut: toMinor(3200), isWinner: true },
+          { userId: arjun.id, buyIn: toMinor(2000), cashOut: toMinor(800) },
+          { userId: sana.id, buyIn: toMinor(2000), cashOut: toMinor(600) },
         ],
       },
       expenses: {
         create: [
-          { label: 'Biryani + drinks', amount: toMinor(2400), category: 'DINNER', paidById: ravi.id, splitMode: 'EQUAL' },
-          { label: 'New card decks', amount: toMinor(400), category: 'OTHER', paidById: arjun.id, splitMode: 'EQUAL' },
+          { label: 'Biryani and drinks', amount: toMinor(2000), type: 'DINNER', paidById: meera.id },
+          { label: 'New decks', amount: toMinor(400), type: 'CARDS', paidById: arjun.id },
         ],
       },
     },
   });
 
-  // Night two: Arjun's turn, and he treats the table to dinner.
+  // Night two: Arjun's turn, so the pizza is on him.
+  // 12000 into the pot, 1800 of it on pizza, 10200 handed back out.
   const gameTwo = await prisma.game.create({
     data: {
       playedOn: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000),
@@ -93,22 +94,21 @@ async function seedDemo(adminId: string) {
       createdById: adminId,
       players: {
         create: [
-          { userId: ravi.id, buyIn: toMinor(3000), cashOut: toMinor(3400) },
+          { userId: ravi.id, buyIn: toMinor(3000), cashOut: toMinor(3000) },
           { userId: meera.id, buyIn: toMinor(3000), cashOut: toMinor(900) },
-          { userId: arjun.id, buyIn: toMinor(3000), cashOut: toMinor(5700), isWinner: true },
-          { userId: sana.id, buyIn: toMinor(3000), cashOut: toMinor(2000) },
+          { userId: arjun.id, buyIn: toMinor(3000), cashOut: toMinor(4500), isWinner: true },
+          { userId: sana.id, buyIn: toMinor(3000), cashOut: toMinor(1800) },
         ],
       },
       expenses: {
         create: [
-          { label: 'Pizza night (on me)', amount: toMinor(1800), category: 'DINNER', paidById: arjun.id, splitMode: 'PAYER' },
+          { label: 'Pizza', amount: toMinor(1800), type: 'DINNER', paidById: arjun.id },
         ],
       },
     },
   });
 
-  await settleGame(gameOne.id);
-  console.log(`Seeded demo games: ${gameOne.title}, ${gameTwo.title} (game two left open).`);
+  console.log(`Seeded demo games: ${gameOne.title}, ${gameTwo.title}.`);
 }
 
 async function main() {

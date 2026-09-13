@@ -19,11 +19,10 @@ import {
 import { InstallCard } from '../components/InstallCard';
 import { useApiQuery } from '../state/useApiQuery';
 import { useAuth } from '../state/AuthContext';
-import { formatMoney } from '../utils/money';
 import { colors, font, spacing } from '../theme';
 import type { RootStackParamList } from '../navigation/types';
 import { confirm, notify } from '../utils/dialog';
-import type { Balances, Player, PlayerStats } from '../api/types';
+import type { Player, PlayerStats } from '../api/types';
 
 export function ProfileScreen() {
   const { api, user, apiUrl, isAdmin, signOut, refreshUser } = useAuth();
@@ -38,7 +37,6 @@ export function ProfileScreen() {
   const { data, loading, error, refreshing, refetch } = useApiQuery<{
     user: Player;
     stats: PlayerStats;
-    balances: Balances;
   }>((client) => client.me());
 
   async function save() {
@@ -63,7 +61,6 @@ export function ProfileScreen() {
   if (error && !data) return <Screen><ErrorNotice message={error} onRetry={refetch} /></Screen>;
 
   const stats = data?.stats;
-  const balances = data?.balances;
 
   return (
     <Screen onRefresh={refetch} refreshing={refreshing}>
@@ -78,7 +75,7 @@ export function ProfileScreen() {
         </View>
       </Card>
 
-      {stats && balances ? (
+      {stats ? (
         <Card style={styles.summary}>
           <View style={styles.summaryItem}>
             <Text style={styles.summaryLabel}>LIFETIME</Text>
@@ -86,13 +83,13 @@ export function ProfileScreen() {
           </View>
           <View style={styles.summaryDivider} />
           <View style={styles.summaryItem}>
-            <Text style={styles.summaryLabel}>GAMES</Text>
+            <Text style={styles.summaryLabel}>NIGHTS</Text>
             <Text style={styles.summaryValue}>{stats.gamesPlayed}</Text>
           </View>
           <View style={styles.summaryDivider} />
           <View style={styles.summaryItem}>
-            <Text style={styles.summaryLabel}>SETTLE UP</Text>
-            <Money value={balances.net} signed size="heading" />
+            <Text style={styles.summaryLabel}>WON</Text>
+            <Text style={styles.summaryValue}>{stats.wins}</Text>
           </View>
         </Card>
       ) : null}
@@ -163,12 +160,6 @@ export function ProfileScreen() {
         ) : null}
       </Card>
 
-      {balances && balances.totalOwes > 0 ? (
-        <Text style={styles.reminder}>
-          You still owe {formatMoney(balances.totalOwes)} across the group.
-        </Text>
-      ) : null}
-
       <Button
         label="Sign out"
         variant="ghost"
@@ -203,11 +194,5 @@ const styles = StyleSheet.create({
   summaryValue: { ...font.heading, color: colors.ink },
 
   rows: { paddingHorizontal: spacing(4) },
-  reminder: {
-    ...font.small,
-    color: colors.warn,
-    textAlign: 'center',
-    marginTop: spacing(5),
-  },
   signOut: { marginTop: spacing(4) },
 });

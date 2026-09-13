@@ -2,9 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { splitEvenly, sum } from '../src/lib/money';
 import {
   computeGameLedger,
-  minimiseTransfers,
-  netOutstanding,
-  shareExpense,
+  findWinnerId,
   type LedgerExpenseInput,
   type LedgerPlayerInput,
 } from '../src/services/ledger.service';
@@ -20,12 +18,9 @@ const player = (id: string, buyIn: number, cashOut: number, isWinner = false): L
 
 const expense = (over: Partial<LedgerExpenseInput> = {}): LedgerExpenseInput => ({
   id: 'e1',
-  label: 'Dinner',
-  category: 'DINNER',
+  type: 'DINNER',
   amount: 1000,
   paidById: 'a',
-  splitMode: 'EQUAL',
-  shares: [],
   ...over,
 });
 
@@ -46,152 +41,79 @@ describe('splitEvenly', () => {
   });
 });
 
-describe('shareExpense', () => {
-  const players = [player('a', 0, 0), player('b', 0, 0), player('c', 0, 0)];
-
-  it('EQUAL spreads across everyone seated and adds back up', () => {
-    const shares = shareExpense(expense({ amount: 1000 }), players);
-    expect(sum([...shares.values()])).toBe(1000);
-    expect([...shares.values()].sort()).toEqual([333, 333, 334]);
-  });
-
-  it('PAYER puts the whole cost on the person who treated', () => {
-    const shares = shareExpense(expense({ splitMode: 'PAYER', paidById: 'b' }), players);
-    expect(shares.get('b')).toBe(1000);
-    expect(shares.size).toBe(1);
-  });
-
-  it('CUSTOM uses the recorded shares', () => {
-    const shares = shareExpense(
-      expense({
-        splitMode: 'CUSTOM',
-        shares: [
-          { userId: 'a', amount: 700 },
-          { userId: 'b', amount: 300 },
-        ],
-      }),
-      players,
-    );
-    expect(shares.get('a')).toBe(700);
-    expect(shares.get('b')).toBe(300);
-    expect(shares.get('c')).toBeUndefined();
-  });
-
-  it('falls back to the payer when nobody is seated yet', () => {
-    const shares = shareExpense(expense({ paidById: 'a' }), []);
-    expect(shares.get('a')).toBe(1000);
-  });
-});
-
 describe('computeGameLedger', () => {
-  it('nets the table and the expenses together', () => {
+  it("a player's result is simply what they took home less what they put in", () => {
     const ledger = computeGameLedger(
       [player('a', 2000, 1000), player('b', 2000, 3000, true)],
-      [expense({ amount: 1000, paidById: 'a', splitMode: 'EQUAL' })],
+      [],
     );
 
-    const a = ledger.lines.find((line) => line.userId === 'a');
-    const b = ledger.lines.find((line) => line.userId === 'b');
+    expect(ledger.lines.find((line) => line.userId === 'a')?.net).toBe(-1000);
+    expect(ledger.lines.find((line) => line.userId === 'b')?.net).toBe(1000);
+  });
 
-    // a lost 1000 at the table but fronted 1000 of dinner and owes half of it.
-    expect(a).toMatchObject({ tableNet: -1000, expensePaid: 1000, expenseShare: 500, net: -500 });
-    expect(b).toMatchObject({ tableNet: 1000, expensePaid: 0, expenseShare: 500, net: 500 });
+  it('balances when the buy-ins cover the cash-outs plus what was spent', () => {
+    // 4000 in, 3000 taken home, 1000 spent on dinner.
+    const ledger = computeGameLedger(
+      [player('a', 2000, 1000), player('b', 2000, 2000, true)],
+      [expense({ amount: 1000, paidById: 'b' })],
+    );
+
+    expect(ledger.totals).toMatchObject({ buyIn: 4000, cashOut: 3000, expenses: 1000 });
+    expect(ledger.totals.difference).toBe(0);
     expect(ledger.balanced).toBe(true);
   });
 
-  it('always sums the nets to zero when the chips balance', () => {
+  it('flags a night where the money does not add up, and by how much', () => {
+    // 4000 in, 3000 out, but only 600 of spending accounted for.
     const ledger = computeGameLedger(
-      [player('a', 3000, 1500), player('b', 3000, 4700), player('c', 3000, 2800)],
-      [
-        expense({ id: 'e1', amount: 1001, paidById: 'c', splitMode: 'EQUAL' }),
-        expense({ id: 'e2', amount: 450, category: 'OTHER', paidById: 'a', splitMode: 'PAYER' }),
-      ],
+      [player('a', 2000, 1000), player('b', 2000, 2000, true)],
+      [expense({ amount: 600, paidById: 'b' })],
     );
-    expect(sum(ledger.lines.map((line) => line.net))).toBe(0);
-  });
 
-  it('flags a game whose cash-outs do not match the buy-ins', () => {
-    const ledger = computeGameLedger([player('a', 2000, 1000), player('b', 2000, 2500)], []);
     expect(ledger.balanced).toBe(false);
-    expect(ledger.totals.tableImbalance).toBe(-500);
+    expect(ledger.totals.difference).toBe(400);
   });
 
-  it('totals dinner separately from other expenses', () => {
+  it('is balanced with no expenses when the pot is handed back out in full', () => {
+    const ledger = computeGameLedger([player('a', 2000, 1500), player('b', 2000, 2500, true)], []);
+    expect(ledger.balanced).toBe(true);
+  });
+
+  it('leaves the table collectively down by whatever the night cost', () => {
     const ledger = computeGameLedger(
-      [player('a', 1000, 1000)],
+      [player('a', 3000, 2000), player('b', 3000, 2500, true), player('c', 3000, 3000)],
+      [expense({ amount: 1500, paidById: 'b' })],
+    );
+    // The money that left the table is exactly the money that was spent.
+    expect(sum(ledger.lines.map((line) => line.net))).toBe(-1500);
+    expect(ledger.balanced).toBe(true);
+  });
+
+  it('totals dinner separately from everything else', () => {
+    const ledger = computeGameLedger(
+      [player('a', 1000, 0, true)],
       [
-        expense({ id: 'e1', amount: 800, category: 'DINNER' }),
-        expense({ id: 'e2', amount: 200, category: 'OTHER' }),
+        expense({ id: 'e1', amount: 800, type: 'DINNER' }),
+        expense({ id: 'e2', amount: 200, type: 'CARDS' }),
       ],
     );
     expect(ledger.totals).toMatchObject({ dinner: 800, otherExpenses: 200, expenses: 1000 });
+    expect(ledger.balanced).toBe(true);
   });
 });
 
-describe('minimiseTransfers', () => {
-  it('clears the board in at most n-1 payments', () => {
-    const transfers = minimiseTransfers([
-      { userId: 'a', net: -500 },
-      { userId: 'b', net: -300 },
-      { userId: 'c', net: 800 },
-    ]);
-    expect(transfers).toHaveLength(2);
-    expect(sum(transfers.map((t) => t.amount))).toBe(800);
-    expect(transfers.every((t) => t.toUserId === 'c')).toBe(true);
+describe('findWinnerId', () => {
+  it('finds whoever is flagged', () => {
+    expect(
+      findWinnerId([
+        { userId: 'a', isWinner: false },
+        { userId: 'b', isWinner: true },
+      ]),
+    ).toBe('b');
   });
 
-  it('leaves nobody paying themselves and settles every balance', () => {
-    const balances = [
-      { userId: 'a', net: -1200 },
-      { userId: 'b', net: 700 },
-      { userId: 'c', net: -400 },
-      { userId: 'd', net: 900 },
-    ];
-    const transfers = minimiseTransfers(balances);
-
-    const settled = new Map<string, number>();
-    for (const transfer of transfers) {
-      expect(transfer.fromUserId).not.toBe(transfer.toUserId);
-      settled.set(transfer.fromUserId, (settled.get(transfer.fromUserId) ?? 0) - transfer.amount);
-      settled.set(transfer.toUserId, (settled.get(transfer.toUserId) ?? 0) + transfer.amount);
-    }
-    for (const balance of balances) {
-      expect(settled.get(balance.userId) ?? 0).toBe(balance.net);
-    }
-    expect(transfers.length).toBeLessThanOrEqual(balances.length - 1);
-  });
-
-  it('returns nothing when everyone is square', () => {
-    expect(minimiseTransfers([{ userId: 'a', net: 0 }, { userId: 'b', net: 0 }])).toEqual([]);
-  });
-});
-
-describe('netOutstanding', () => {
-  it('cancels IOUs that point in opposite directions', () => {
-    const netted = netOutstanding([
-      { fromUserId: 'a', toUserId: 'b', amount: 500 },
-      { fromUserId: 'b', toUserId: 'a', amount: 200 },
-    ]);
-    expect(netted).toEqual([{ fromUserId: 'a', toUserId: 'b', amount: 300 }]);
-  });
-
-  it('drops a pair that has cancelled out entirely', () => {
-    const netted = netOutstanding([
-      { fromUserId: 'a', toUserId: 'b', amount: 500 },
-      { fromUserId: 'b', toUserId: 'a', amount: 500 },
-    ]);
-    expect(netted).toEqual([]);
-  });
-
-  it('keeps separate pairs apart', () => {
-    const netted = netOutstanding([
-      { fromUserId: 'a', toUserId: 'b', amount: 500 },
-      { fromUserId: 'a', toUserId: 'c', amount: 300 },
-      { fromUserId: 'a', toUserId: 'b', amount: 100 },
-    ]);
-    expect(netted).toEqual([
-      { fromUserId: 'a', toUserId: 'b', amount: 600 },
-      { fromUserId: 'a', toUserId: 'c', amount: 300 },
-    ]);
+  it('returns nothing when nobody is flagged yet', () => {
+    expect(findWinnerId([{ userId: 'a', isWinner: false }])).toBeNull();
   });
 });

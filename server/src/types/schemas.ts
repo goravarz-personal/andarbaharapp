@@ -1,10 +1,5 @@
 import { z } from 'zod';
-import {
-  ExpenseCategorySchema,
-  GameStatusSchema,
-  RoleSchema,
-  SplitModeSchema,
-} from './enums';
+import { ExpenseTypeSchema, RoleSchema } from './enums';
 
 /** Money arrives from clients as whole minor units (paise). */
 const money = z
@@ -63,24 +58,17 @@ export const gamePlayerInputSchema = z.object({
   notes: z.string().trim().max(280).optional(),
 });
 
-export const expenseShareInputSchema = z.object({
-  userId: z.string().min(1),
-  amount: money,
+export const expenseInputSchema = z.object({
+  type: ExpenseTypeSchema.default('DINNER'),
+  amount: money.refine((value) => value > 0, 'Amount must be more than zero.'),
+  /** Optional note. The type already says what kind of cost this is. */
+  label: z.string().trim().max(80).optional(),
+  /**
+   * Who handed the money over. Left out for dinner, which the winner always
+   * covers - the server fills that in rather than trusting the client.
+   */
+  paidById: z.string().min(1).optional(),
 });
-
-export const expenseInputSchema = z
-  .object({
-    label: z.string().trim().min(1, 'Give the expense a name.').max(80),
-    amount: money.refine((value) => value > 0, 'Amount must be more than zero.'),
-    category: ExpenseCategorySchema.default('OTHER'),
-    paidById: z.string().min(1, 'Say who paid.'),
-    splitMode: SplitModeSchema.default('EQUAL'),
-    shares: z.array(expenseShareInputSchema).optional(),
-  })
-  .refine(
-    (value) => value.splitMode !== 'CUSTOM' || (value.shares?.length ?? 0) > 0,
-    { message: 'A custom split needs at least one share.', path: ['shares'] },
-  );
 
 export const createGameSchema = z.object({
   playedOn: isoDate,
@@ -96,7 +84,6 @@ export const updateGameSchema = z.object({
   title: z.string().trim().max(80).optional(),
   location: z.string().trim().max(80).optional(),
   notes: z.string().trim().max(500).optional(),
-  status: GameStatusSchema.optional(),
 });
 
 export const upsertGamePlayerSchema = gamePlayerInputSchema;
@@ -106,19 +93,6 @@ export const updateGamePlayerSchema = z.object({
   cashOut: money.optional(),
   isWinner: z.boolean().optional(),
   notes: z.string().trim().max(280).optional(),
-});
-
-export const manualSettlementSchema = z.object({
-  fromUserId: z.string().min(1, 'Say who owes.'),
-  toUserId: z.string().min(1, 'Say who is owed.'),
-  amount: money.refine((value) => value > 0, 'Amount must be more than zero.'),
-  note: z.string().trim().max(200).optional(),
-  gameId: z.string().optional(),
-});
-
-export const settlementStatusUpdateSchema = z.object({
-  status: z.enum(['PENDING', 'PAID']),
-  note: z.string().trim().max(200).optional(),
 });
 
 export const updateMeSchema = z.object({

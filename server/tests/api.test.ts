@@ -173,29 +173,102 @@ describe('games', () => {
         location: "Ravi's place",
         players: [
           { userId: ravi.id, buyIn: rs(2000), cashOut: rs(1000) },
-          { userId: meera.id, buyIn: rs(2000), cashOut: rs(3000), isWinner: true },
+          { userId: meera.id, buyIn: rs(2000), cashOut: rs(2400), isWinner: true },
         ],
-        expenses: [
-          { label: 'Dinner', amount: rs(600), category: 'DINNER', paidById: ravi.id, splitMode: 'EQUAL' },
-        ],
+        expenses: [{ type: 'DINNER', label: 'Dinner', amount: rs(600) }],
       })
       .expect(201);
     return response.body.game;
   }
 
-  it('records a game with players and expenses in one call', async () => {
+  it('records a game with players and what the night cost', async () => {
     const game = await createGame();
 
     expect(game.playerCount).toBe(2);
-    expect(game.totals).toMatchObject({ buyIn: rs(4000), cashOut: rs(4000), dinner: rs(600) });
+    // 4000 in, 3400 taken home, 600 on dinner.
+    expect(game.totals).toMatchObject({ buyIn: rs(4000), cashOut: rs(3400), dinner: rs(600) });
     expect(game.balanced).toBe(true);
-    expect(game.winners).toHaveLength(1);
-    expect(game.winners[0].displayName).toBe('Meera');
+    expect(game.winner.displayName).toBe('Meera');
 
     const raviLine = game.players.find((p: { userId: string }) => p.userId === ravi.id);
-    // Lost 1000 at the table, fronted 600 of dinner, owes 300 of it.
-    expect(raviLine).toMatchObject({ tableNet: rs(-1000), expensePaid: rs(600), expenseShare: rs(300) });
-    expect(raviLine.net).toBe(rs(-700));
+    expect(raviLine.net).toBe(rs(-1000));
+  });
+
+  it('puts dinner on the winner without being told who paid', async () => {
+    const game = await createGame();
+    expect(game.expenses[0].paidBy.displayName).toBe('Meera');
+  });
+
+  it('refuses dinner until somebody is marked as the winner', async () => {
+    const response = await request(app)
+      .post('/api/games')
+      .set(auth(adminToken))
+      .send({
+        playedOn: new Date().toISOString(),
+        players: [{ userId: ravi.id, buyIn: rs(1000), cashOut: rs(400) }],
+        expenses: [{ type: 'DINNER', amount: rs(600) }],
+      })
+      .expect(400);
+    expect(response.body.error.message).toMatch(/who won/i);
+  });
+
+  it('moves the dinner bill when the crown moves', async () => {
+    const game = await createGame();
+    const raviSeat = game.players.find((p: { userId: string }) => p.userId === ravi.id);
+
+    const updated = await request(app)
+      .patch(`/api/games/${game.id}/players/${raviSeat.id}`)
+      .set(auth(adminToken))
+      .send({ isWinner: true })
+      .expect(200);
+
+    expect(updated.body.game.winner.displayName).toBe('Ravi');
+    expect(updated.body.game.expenses[0].paidBy.displayName).toBe('Ravi');
+    // Only ever one winner.
+    expect(updated.body.game.players.filter((p: { isWinner: boolean }) => p.isWinner)).toHaveLength(1);
+  });
+
+  it('lets a non-dinner cost be attributed to anyone at the table', async () => {
+    const game = await createGame();
+    const response = await request(app)
+      .post(`/api/games/${game.id}/expenses`)
+      .set(auth(adminToken))
+      .send({ type: 'CARDS', label: 'New decks', amount: rs(200), paidById: ravi.id })
+      .expect(201);
+
+    const cards = response.body.game.expenses.find((e: { type: string }) => e.type === 'CARDS');
+    expect(cards.paidBy.displayName).toBe('Ravi');
+    expect(response.body.game.totals.otherExpenses).toBe(rs(200));
+  });
+
+  it('will not take a cost paid by someone who was not there', async () => {
+    const game = await createGame();
+    const outsider = await makeUser('outsider');
+
+    const response = await request(app)
+      .post(`/api/games/${game.id}/expenses`)
+      .set(auth(adminToken))
+      .send({ type: 'TRAVEL', amount: rs(300), paidById: outsider.id })
+      .expect(400);
+    expect(response.body.error.message).toMatch(/one of the players/i);
+  });
+
+  it('flags a night whose numbers do not reconcile', async () => {
+    const response = await request(app)
+      .post('/api/games')
+      .set(auth(adminToken))
+      .send({
+        playedOn: new Date().toISOString(),
+        players: [
+          { userId: ravi.id, buyIn: rs(1000), cashOut: rs(500), isWinner: true },
+          { userId: meera.id, buyIn: rs(1000), cashOut: rs(1000) },
+        ],
+      })
+      .expect(201);
+
+    expect(response.body.game.balanced).toBe(false);
+    // 2000 in, 1500 out, nothing spent - 500 unaccounted for.
+    expect(response.body.game.totals.difference).toBe(rs(500));
   });
 
   it('lets a player read games but not create them', async () => {
@@ -221,68 +294,6 @@ describe('games', () => {
       .expect(400);
   });
 
-  it('re-splits an equal expense when a latecomer joins', async () => {
-    const game = await createGame();
-    const arjun = await makeUser('arjun');
-
-    const updated = await request(app)
-      .post(`/api/games/${game.id}/players`)
-      .set(auth(adminToken))
-      .send({ userId: arjun.id, buyIn: rs(2000), cashOut: rs(2000) })
-      .expect(201);
-
-    const shares = updated.body.game.players.map((p: { expenseShare: number }) => p.expenseShare);
-    expect(shares).toEqual([rs(200), rs(200), rs(200)]);
-  });
-
-  it('will not take an expense paid by someone who was not there', async () => {
-    const game = await createGame();
-    const outsider = await makeUser('outsider');
-
-    const response = await request(app)
-      .post(`/api/games/${game.id}/expenses`)
-      .set(auth(adminToken))
-      .send({ label: 'Cab', amount: rs(300), paidById: outsider.id })
-      .expect(400);
-    expect(response.body.error.message).toMatch(/one of the players/i);
-  });
-
-  it('will not take a custom split that does not add up', async () => {
-    const game = await createGame();
-    const response = await request(app)
-      .post(`/api/games/${game.id}/expenses`)
-      .set(auth(adminToken))
-      .send({
-        label: 'Snacks',
-        amount: rs(500),
-        paidById: ravi.id,
-        splitMode: 'CUSTOM',
-        shares: [
-          { userId: ravi.id, amount: rs(200) },
-          { userId: meera.id, amount: rs(200) },
-        ],
-      })
-      .expect(400);
-    expect(response.body.error.message).toMatch(/have to match/i);
-  });
-
-  it('flags a game whose cash-outs do not match the buy-ins', async () => {
-    const response = await request(app)
-      .post('/api/games')
-      .set(auth(adminToken))
-      .send({
-        playedOn: new Date().toISOString(),
-        players: [
-          { userId: ravi.id, buyIn: rs(1000), cashOut: rs(500) },
-          { userId: meera.id, buyIn: rs(1000), cashOut: rs(1000) },
-        ],
-      })
-      .expect(201);
-
-    expect(response.body.game.balanced).toBe(false);
-    expect(response.body.game.totals.tableImbalance).toBe(rs(-500));
-  });
-
   it('deletes a game and everything hanging off it', async () => {
     const game = await createGame();
     await request(app).delete(`/api/games/${game.id}`).set(auth(adminToken)).expect(200);
@@ -290,172 +301,6 @@ describe('games', () => {
     expect(await prisma.gamePlayer.count({ where: { gameId: game.id } })).toBe(0);
     expect(await prisma.expense.count({ where: { gameId: game.id } })).toBe(0);
     await request(app).get(`/api/games/${game.id}`).set(auth(adminToken)).expect(404);
-  });
-});
-
-describe('settling up', () => {
-  async function settledGame() {
-    const created = await request(app)
-      .post('/api/games')
-      .set(auth(adminToken))
-      .send({
-        playedOn: '2026-03-01T19:00:00.000Z',
-        players: [
-          { userId: ravi.id, buyIn: rs(2000), cashOut: rs(1000) },
-          { userId: meera.id, buyIn: rs(2000), cashOut: rs(3000), isWinner: true },
-        ],
-      })
-      .expect(201);
-
-    const response = await request(app)
-      .post(`/api/games/${created.body.game.id}/settle`)
-      .set(auth(adminToken))
-      .expect(200);
-    return response.body.game;
-  }
-
-  it('works out who pays whom and marks the game settled', async () => {
-    const game = await settledGame();
-
-    expect(game.status).toBe('SETTLED');
-    expect(game.settlements).toHaveLength(1);
-    expect(game.settlements[0]).toMatchObject({ amount: rs(1000), status: 'PENDING' });
-    expect(game.settlements[0].from.displayName).toBe('Ravi');
-    expect(game.settlements[0].to.displayName).toBe('Meera');
-  });
-
-  it('previews the split without writing anything', async () => {
-    const created = await request(app)
-      .post('/api/games')
-      .set(auth(adminToken))
-      .send({
-        playedOn: new Date().toISOString(),
-        players: [
-          { userId: ravi.id, buyIn: rs(500), cashOut: rs(0) },
-          { userId: meera.id, buyIn: rs(500), cashOut: rs(1000), isWinner: true },
-        ],
-      })
-      .expect(201);
-
-    const preview = await request(app)
-      .get(`/api/games/${created.body.game.id}/settlement-preview`)
-      .set(auth(playerToken))
-      .expect(200);
-
-    expect(preview.body.transfers).toEqual([
-      expect.objectContaining({ fromName: 'Ravi', toName: 'Meera', amount: rs(500) }),
-    ]);
-    expect(await prisma.settlement.count({ where: { gameId: created.body.game.id } })).toBe(0);
-  });
-
-  it('replaces generated payments when a game is settled again', async () => {
-    const game = await settledGame();
-
-    await request(app)
-      .patch(`/api/games/${game.id}/players/${game.players[0].id}`)
-      .set(auth(adminToken))
-      .send({ cashOut: rs(1500) })
-      .expect(200);
-
-    const resettled = await request(app)
-      .post(`/api/games/${game.id}/settle`)
-      .set(auth(adminToken))
-      .expect(200);
-
-    expect(resettled.body.game.settlements).toHaveLength(1);
-    expect(resettled.body.game.settlements[0].amount).toBe(rs(500));
-  });
-
-  it('refuses to wipe payments already marked paid unless forced', async () => {
-    const game = await settledGame();
-    const settlementId = game.settlements[0].id;
-
-    // Meera is the one being paid, so she is the one who can confirm it.
-    const meeraToken = await login('meera');
-    await request(app)
-      .patch(`/api/settlements/${settlementId}`)
-      .set(auth(meeraToken))
-      .send({ status: 'PAID' })
-      .expect(200);
-
-    await request(app).post(`/api/games/${game.id}/settle`).set(auth(adminToken)).expect(409);
-    await request(app)
-      .post(`/api/games/${game.id}/settle?force=true`)
-      .set(auth(adminToken))
-      .expect(200);
-  });
-
-  it('only lets the player being paid confirm a payment', async () => {
-    const game = await settledGame();
-    const settlementId = game.settlements[0].id;
-
-    // Ravi owes the money - he cannot mark it received.
-    await request(app)
-      .patch(`/api/settlements/${settlementId}`)
-      .set(auth(playerToken))
-      .send({ status: 'PAID' })
-      .expect(403);
-
-    await request(app)
-      .patch(`/api/settlements/${settlementId}`)
-      .set(auth(adminToken))
-      .send({ status: 'PAID' })
-      .expect(200);
-  });
-
-  it('records an IOU by hand', async () => {
-    const response = await request(app)
-      .post('/api/settlements')
-      .set(auth(adminToken))
-      .send({ fromUserId: ravi.id, toUserId: meera.id, amount: rs(250), note: 'Cab share' })
-      .expect(201);
-
-    expect(response.body.settlement).toMatchObject({ kind: 'MANUAL', status: 'PENDING' });
-  });
-
-  it('will not let a player owe themselves', async () => {
-    await request(app)
-      .post('/api/settlements')
-      .set(auth(adminToken))
-      .send({ fromUserId: ravi.id, toUserId: ravi.id, amount: rs(100) })
-      .expect(400);
-  });
-
-  it('nets opposing IOUs into one line on the board', async () => {
-    await request(app)
-      .post('/api/settlements')
-      .set(auth(adminToken))
-      .send({ fromUserId: ravi.id, toUserId: meera.id, amount: rs(500) })
-      .expect(201);
-    await request(app)
-      .post('/api/settlements')
-      .set(auth(adminToken))
-      .send({ fromUserId: meera.id, toUserId: ravi.id, amount: rs(200) })
-      .expect(201);
-
-    const response = await request(app)
-      .get('/api/settlements/outstanding')
-      .set(auth(playerToken))
-      .expect(200);
-
-    expect(response.body.outstanding).toHaveLength(1);
-    expect(response.body.outstanding[0]).toMatchObject({ amount: rs(300) });
-    expect(response.body.outstanding[0].from.displayName).toBe('Ravi');
-  });
-
-  it('drops a settled IOU off the outstanding board', async () => {
-    const game = await settledGame();
-    await request(app)
-      .patch(`/api/settlements/${game.settlements[0].id}`)
-      .set(auth(adminToken))
-      .send({ status: 'PAID' })
-      .expect(200);
-
-    const response = await request(app)
-      .get('/api/settlements/outstanding')
-      .set(auth(adminToken))
-      .expect(200);
-    expect(response.body.outstanding).toHaveLength(0);
   });
 });
 
@@ -521,6 +366,7 @@ describe('history and stats', () => {
     expect(response.body.stats.gamesPlayed).toBe(2);
     expect(response.body.totals).toMatchObject({ games: 2, players: 3 });
     expect(response.body.recentGames).toHaveLength(2);
+    expect(response.body.balances).toBeUndefined();
   });
 
   it('filters the games list by player', async () => {

@@ -1,19 +1,10 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import { Screen } from '../components/Screen';
-import {
-  Badge,
-  Button,
-  Card,
-  EmptyState,
-  ErrorNotice,
-  LoadingView,
-  Money,
-  SegmentedControl,
-} from '../components';
+import { Badge, Button, Card, EmptyState, ErrorNotice, LoadingView, Money } from '../components';
 import { useApiQuery } from '../state/useApiQuery';
 import { useAuth } from '../state/AuthContext';
 import { formatMoney } from '../utils/money';
@@ -22,16 +13,11 @@ import { colors, font, spacing } from '../theme';
 import type { RootStackParamList } from '../navigation/types';
 import type { GameSummary } from '../api/types';
 
-type Filter = 'ALL' | 'OPEN' | 'SETTLED';
-
 export function GamesScreen() {
   const { user, isAdmin } = useAuth();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const [filter, setFilter] = useState<Filter>('ALL');
-
   const { data, loading, error, refreshing, refetch } = useApiQuery<{ games: GameSummary[] }>(
-    (api) => api.games(filter === 'ALL' ? {} : { status: filter }),
-    [filter],
+    (api) => api.games(),
   );
 
   const games = data?.games ?? [];
@@ -50,16 +36,6 @@ export function GamesScreen() {
         ) : undefined
       }
     >
-      <SegmentedControl<Filter>
-        value={filter}
-        onChange={setFilter}
-        options={[
-          { value: 'ALL', label: 'All' },
-          { value: 'OPEN', label: 'Not settled' },
-          { value: 'SETTLED', label: 'Settled' },
-        ]}
-      />
-
       <View style={styles.list}>
         {loading && !data ? <LoadingView /> : null}
         {error && !data ? <ErrorNotice message={error} onRetry={refetch} /> : null}
@@ -68,13 +44,11 @@ export function GamesScreen() {
           <Card>
             <EmptyState
               icon="dice-outline"
-              title={filter === 'ALL' ? 'No games yet' : 'Nothing here'}
+              title="No games yet"
               message={
-                filter === 'ALL'
-                  ? isAdmin
-                    ? 'Record a game night to start the ledger.'
-                    : 'Games recorded by the admin will show up here.'
-                  : 'Try another filter.'
+                isAdmin
+                  ? 'Record a game night to start the ledger.'
+                  : 'Games recorded by the admin will show up here.'
               }
             />
           </Card>
@@ -99,21 +73,15 @@ export function GamesScreen() {
                       {game.location ? ` · ${game.location}` : ''}
                     </Text>
                   </View>
-                  {game.status === 'SETTLED' ? (
-                    <Badge
-                      label={game.pendingSettlements > 0 ? `${game.pendingSettlements} to pay` : 'Settled'}
-                      tone={game.pendingSettlements > 0 ? 'warn' : 'win'}
-                      icon={game.pendingSettlements > 0 ? 'time-outline' : 'checkmark-circle'}
-                    />
-                  ) : (
-                    <Badge label="Open" tone="neutral" icon="ellipse-outline" />
+                  {game.balanced ? null : (
+                    <Badge label="Check numbers" tone="warn" icon="alert-circle-outline" />
                   )}
                 </View>
 
                 <View style={styles.stats}>
                   <Stat label="Players" value={String(game.playerCount)} />
                   <Stat label="Pot" value={formatMoney(game.totals.buyIn)} />
-                  <Stat label="Dinner" value={formatMoney(game.totals.dinner)} />
+                  <Stat label="Spent" value={formatMoney(game.totals.expenses)} />
                   {mine ? (
                     <View style={styles.stat}>
                       <Text style={styles.statLabel}>YOU</Text>
@@ -122,12 +90,10 @@ export function GamesScreen() {
                   ) : null}
                 </View>
 
-                {game.winners.length > 0 ? (
+                {game.winner ? (
                   <View style={styles.winnerRow}>
                     <Ionicons name="trophy" size={13} color={colors.gold} />
-                    <Text style={styles.winnerText}>
-                      {game.winners.map((winner) => winner.displayName).join(', ')}
-                    </Text>
+                    <Text style={styles.winnerText}>{game.winner.displayName} won</Text>
                   </View>
                 ) : null}
 
@@ -135,8 +101,8 @@ export function GamesScreen() {
                   <View style={styles.warnRow}>
                     <Ionicons name="alert-circle-outline" size={13} color={colors.warn} />
                     <Text style={styles.warnText}>
-                      Cash-outs are {formatMoney(Math.abs(game.totals.tableImbalance))}{' '}
-                      {game.totals.tableImbalance > 0 ? 'over' : 'under'} the buy-ins
+                      {formatMoney(Math.abs(game.totals.difference))}{' '}
+                      {game.totals.difference > 0 ? 'unaccounted for' : 'more paid out than came in'}
                     </Text>
                   </View>
                 ) : null}

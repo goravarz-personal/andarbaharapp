@@ -35,8 +35,7 @@ export function DashboardScreen() {
   if (error && !data) return <Screen><ErrorNotice message={error} onRetry={refetch} /></Screen>;
   if (!data) return null;
 
-  const { stats, balances, totals, recentGames } = data;
-  const settleUp = balances.net;
+  const { stats, totals, recentGames } = data;
 
   return (
     <Screen onRefresh={refetch} refreshing={refreshing}>
@@ -52,48 +51,52 @@ export function DashboardScreen() {
         <Avatar name={user?.displayName ?? '?'} color={user?.avatarColor} size={46} />
       </View>
 
-      {/* The number everyone opens the app for. */}
-      <Card style={styles.heroCard}>
-        <Text style={styles.heroLabel}>
-          {settleUp > 0 ? 'YOU ARE OWED' : settleUp < 0 ? 'YOU OWE' : 'ALL SQUARE'}
-        </Text>
-        <Text style={styles.heroAmount}>{formatMoney(Math.abs(settleUp))}</Text>
-        <View style={styles.heroSplit}>
-          <View style={styles.heroSplitItem}>
-            <Text style={styles.heroSplitLabel}>Owed to you</Text>
-            <Text style={styles.heroSplitValue}>{formatMoney(balances.totalOwed)}</Text>
+      {/* Where you stand across every night you have played. Someone who has
+          not sat down yet gets the group's numbers instead of a row of zeros. */}
+      {stats.gamesPlayed === 0 ? (
+        <Card style={styles.heroCard}>
+          <Text style={styles.heroLabel}>THE BOOKS SO FAR</Text>
+          <Text style={styles.heroAmount}>{plural(totals.games, 'night')}</Text>
+          <Text style={styles.heroEmpty}>
+            {isAdmin
+              ? 'You have not played a night yourself yet. Add yourself to a game and your record starts here.'
+              : 'Nothing on your record yet. Once you sit down at a game, it shows up here.'}
+          </Text>
+        </Card>
+      ) : (
+        <Card style={styles.heroCard}>
+          <Text style={styles.heroLabel}>
+            {stats.netProfit > 0 ? 'YOU ARE UP' : stats.netProfit < 0 ? 'YOU ARE DOWN' : 'DEAD EVEN'}
+          </Text>
+          <Text style={styles.heroAmount}>{formatMoney(Math.abs(stats.netProfit))}</Text>
+          <View style={styles.heroSplit}>
+            <View style={styles.heroSplitItem}>
+              <Text style={styles.heroSplitLabel}>Put in</Text>
+              <Text style={styles.heroSplitValue}>{formatMoney(stats.totalBuyIn)}</Text>
+            </View>
+            <View style={styles.heroDivider} />
+            <View style={styles.heroSplitItem}>
+              <Text style={styles.heroSplitLabel}>Taken home</Text>
+              <Text style={styles.heroSplitValue}>{formatMoney(stats.totalCashOut)}</Text>
+            </View>
           </View>
-          <View style={styles.heroDivider} />
-          <View style={styles.heroSplitItem}>
-            <Text style={styles.heroSplitLabel}>You owe</Text>
-            <Text style={styles.heroSplitValue}>{formatMoney(balances.totalOwes)}</Text>
-          </View>
-        </View>
-        {balances.owes.length + balances.owed.length > 0 ? (
-          <Pressable
-            onPress={() => navigation.navigate('Tabs', { screen: 'Settle' })}
-            style={styles.heroLink}
-          >
-            <Text style={styles.heroLinkText}>See who owes whom</Text>
-            <Ionicons name="arrow-forward" size={14} color={colors.goldSoft} />
-          </Pressable>
-        ) : null}
-      </Card>
+        </Card>
+      )}
 
-      <SectionHeader title="Your record" />
-      <View style={styles.tiles}>
-        <StatTile
-          label="Lifetime"
-          value={formatMoney(stats.netProfit, { signed: true })}
-          tone={stats.netProfit > 0 ? 'win' : stats.netProfit < 0 ? 'loss' : 'neutral'}
-        />
-        <StatTile label="Win rate" value={`${stats.winRate}%`} caption={`${stats.wins} wins`} />
-        <StatTile
-          label="Best night"
-          value={formatMoney(stats.bestGame, { signed: true })}
-          tone={stats.bestGame > 0 ? 'win' : 'neutral'}
-        />
-      </View>
+      {stats.gamesPlayed > 0 ? (
+        <>
+          <SectionHeader title="Your record" />
+          <View style={styles.tiles}>
+            <StatTile label="Nights" value={String(stats.gamesPlayed)} caption={`${stats.wins} won`} />
+            <StatTile label="Win rate" value={`${stats.winRate}%`} />
+            <StatTile
+              label="Best night"
+              value={formatMoney(stats.bestGame, { signed: true })}
+              tone={stats.bestGame > 0 ? 'win' : 'neutral'}
+            />
+          </View>
+        </>
+      ) : null}
 
       <SectionHeader
         title="Recent games"
@@ -184,9 +187,7 @@ const styles = StyleSheet.create({
   heroDivider: { width: StyleSheet.hairlineWidth, backgroundColor: colors.feltSoft },
   heroSplitLabel: { ...font.small, color: colors.goldSoft, opacity: 0.75 },
   heroSplitValue: { ...font.heading, color: colors.white, marginTop: 2 },
-  heroLink: { flexDirection: 'row', alignItems: 'center', gap: spacing(1.5), marginTop: spacing(4) },
-  heroLinkText: { ...font.smallStrong, color: colors.goldSoft },
-
+  heroEmpty: { ...font.small, color: colors.goldSoft, opacity: 0.85, marginTop: spacing(3), lineHeight: 19 },
   tiles: { flexDirection: 'row', gap: spacing(2) },
 
   gameRow: {

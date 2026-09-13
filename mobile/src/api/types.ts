@@ -1,10 +1,28 @@
 /** Mirrors what the API returns. Money is always whole paise. */
 
 export type Role = 'ADMIN' | 'PLAYER';
-export type GameStatus = 'OPEN' | 'SETTLED';
-export type ExpenseCategory = 'DINNER' | 'OTHER';
-export type SplitMode = 'EQUAL' | 'CUSTOM' | 'PAYER';
-export type SettlementStatus = 'PENDING' | 'PAID';
+
+/** What the night spent money on. Dinner is the common case. */
+export const EXPENSE_TYPES = [
+  'DINNER',
+  'DRINKS',
+  'SNACKS',
+  'CARDS',
+  'VENUE',
+  'TRAVEL',
+  'OTHER',
+] as const;
+export type ExpenseType = (typeof EXPENSE_TYPES)[number];
+
+export const EXPENSE_TYPE_LABELS: Record<ExpenseType, string> = {
+  DINNER: 'Dinner',
+  DRINKS: 'Drinks',
+  SNACKS: 'Snacks',
+  CARDS: 'Cards and supplies',
+  VENUE: 'Venue',
+  TRAVEL: 'Travel',
+  OTHER: 'Something else',
+};
 
 export interface Player {
   id: string;
@@ -32,7 +50,8 @@ export interface GameTotals {
   dinner: number;
   otherExpenses: number;
   expenses: number;
-  tableImbalance: number;
+  /** buyIn - cashOut - expenses. Zero when the night reconciles. */
+  difference: number;
 }
 
 export interface GamePlayerLine {
@@ -45,39 +64,15 @@ export interface GamePlayerLine {
   cashOut: number;
   isWinner: boolean;
   notes: string | null;
-  tableNet: number;
-  expensePaid: number;
-  expenseShare: number;
   net: number;
-}
-
-export interface ExpenseShare {
-  userId: string;
-  displayName: string;
-  amount: number;
 }
 
 export interface Expense {
   id: string;
-  label: string;
-  category: ExpenseCategory;
+  type: ExpenseType;
+  label: string | null;
   amount: number;
-  splitMode: SplitMode;
   paidBy: PersonRef;
-  shares: ExpenseShare[];
-}
-
-export interface Settlement {
-  id: string;
-  gameId: string | null;
-  amount: number;
-  status: SettlementStatus;
-  kind: 'AUTO' | 'MANUAL';
-  note: string | null;
-  paidAt: string | null;
-  createdAt: string;
-  from: PersonRef;
-  to: PersonRef;
 }
 
 export interface GameSummary {
@@ -85,12 +80,10 @@ export interface GameSummary {
   playedOn: string;
   title: string | null;
   location: string | null;
-  status: GameStatus;
   playerCount: number;
   totals: GameTotals;
   balanced: boolean;
-  pendingSettlements: number;
-  winners: Array<{ userId: string; displayName: string }>;
+  winner: { userId: string; displayName: string } | null;
   players: Array<{ userId: string; displayName: string; avatarColor: string | null; net: number }>;
 }
 
@@ -100,7 +93,6 @@ export interface Game {
   title: string | null;
   location: string | null;
   notes: string | null;
-  status: GameStatus;
   createdAt: string;
   updatedAt: string;
   createdBy: PersonRef;
@@ -109,8 +101,7 @@ export interface Game {
   expenses: Expense[];
   totals: GameTotals;
   balanced: boolean;
-  winners: Array<{ userId: string; displayName: string; net: number }>;
-  settlements: Settlement[];
+  winner: { userId: string; displayName: string; net: number } | null;
 }
 
 export interface PlayerStats {
@@ -123,8 +114,6 @@ export interface PlayerStats {
   bestGame: number;
   worstGame: number;
   averageNet: number;
-  expensesPaid: number;
-  expenseShare: number;
   lastPlayedOn: string | null;
 }
 
@@ -133,33 +122,15 @@ export interface HistoryRow {
   playedOn: string;
   title: string | null;
   location: string | null;
-  status: GameStatus;
   playerCount: number;
   buyIn: number;
   cashOut: number;
-  tableNet: number;
-  expensePaid: number;
-  expenseShare: number;
   net: number;
   isWinner: boolean;
 }
 
-export interface BalanceEntry {
-  person?: PersonRef;
-  amount: number;
-}
-
-export interface Balances {
-  owes: BalanceEntry[];
-  owed: BalanceEntry[];
-  totalOwes: number;
-  totalOwed: number;
-  net: number;
-}
-
 export interface Dashboard {
   stats: PlayerStats;
-  balances: Balances;
   totals: { games: number; players: number };
   recentGames: GameSummary[];
 }
@@ -167,12 +138,6 @@ export interface Dashboard {
 export interface LeaderboardRow extends PersonRef {
   role: Role;
   stats: PlayerStats;
-}
-
-export interface OutstandingRow {
-  amount: number;
-  from: PersonRef | null;
-  to: PersonRef | null;
 }
 
 /** Shapes sent to the API when recording a game. */
@@ -185,10 +150,9 @@ export interface GamePlayerInput {
 }
 
 export interface ExpenseInput {
-  label: string;
+  type: ExpenseType;
   amount: number;
-  category: ExpenseCategory;
-  paidById: string;
-  splitMode: SplitMode;
-  shares?: Array<{ userId: string; amount: number }>;
+  label?: string;
+  /** Left out for dinner - the server puts that on the winner. */
+  paidById?: string;
 }

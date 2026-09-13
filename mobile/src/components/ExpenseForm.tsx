@@ -1,24 +1,46 @@
-import React, { useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { Button, Card, SegmentedControl, TextField } from './index';
-import { formatMoney, parseRupees } from '../utils/money';
+import { Ionicons } from '@expo/vector-icons';
+import { Button, Card, TextField } from './index';
+import { Select, type SelectOption } from './Select';
+import { parseRupees } from '../utils/money';
 import { colors, font, radius, spacing } from '../theme';
-import type { ExpenseCategory, ExpenseInput, SplitMode } from '../api/types';
+import { EXPENSE_TYPES, EXPENSE_TYPE_LABELS, type ExpenseInput, type ExpenseType } from '../api/types';
 
 export interface ExpensePerson {
   userId: string;
   displayName: string;
   avatarColor?: string | null;
+  isWinner?: boolean;
 }
 
+const TYPE_ICONS: Record<ExpenseType, keyof typeof Ionicons.glyphMap> = {
+  DINNER: 'restaurant-outline',
+  DRINKS: 'wine-outline',
+  SNACKS: 'fast-food-outline',
+  CARDS: 'albums-outline',
+  VENUE: 'home-outline',
+  TRAVEL: 'car-outline',
+  OTHER: 'receipt-outline',
+};
+
+const TYPE_OPTIONS: Array<SelectOption<ExpenseType>> = EXPENSE_TYPES.map((type) => ({
+  value: type,
+  label: EXPENSE_TYPE_LABELS[type],
+  icon: TYPE_ICONS[type],
+}));
+
 /**
- * Captures one cost for the night. Used both when recording a new game and
- * when adding dinner to a game that already exists.
+ * Captures one cost for the night.
+ *
+ * Dinner is the default, and dinner is always on the winner - so for that type
+ * there is nothing to choose and nothing to get wrong. Anything else needs a
+ * payer named.
  */
 export function ExpenseForm({
   players,
   onSubmit,
-  submitLabel = 'Add expense',
+  submitLabel = 'Add',
   busy = false,
 }: {
   players: ExpensePerson[];
@@ -26,86 +48,53 @@ export function ExpenseForm({
   submitLabel?: string;
   busy?: boolean;
 }) {
-  const [label, setLabel] = useState('');
+  const winner = players.find((person) => person.isWinner) ?? null;
+
+  const [type, setType] = useState<ExpenseType>('DINNER');
   const [amount, setAmount] = useState('');
-  const [category, setCategory] = useState<ExpenseCategory>('DINNER');
-  const [splitMode, setSplitMode] = useState<SplitMode>('EQUAL');
-  const [paidById, setPaidById] = useState<string | null>(players[0]?.userId ?? null);
-  const [shares, setShares] = useState<Record<string, string>>({});
+  const [label, setLabel] = useState('');
+  const [paidById, setPaidById] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const isDinner = type === 'DINNER';
   const amountPaise = parseRupees(amount) ?? 0;
-
-  const customTotal = useMemo(
-    () =>
-      players.reduce((total, person) => total + (parseRupees(shares[person.userId] ?? '') ?? 0), 0),
-    [players, shares],
-  );
 
   function submit() {
     setError(null);
 
-    if (!label.trim()) return setError('Give the expense a name.');
     if (amountPaise <= 0) return setError('Enter how much it came to.');
-    if (!paidById) return setError('Say who paid.');
-
-    if (splitMode === 'CUSTOM' && customTotal !== amountPaise) {
-      return setError(
-        `The shares add up to ${formatMoney(customTotal)}, but the expense is ${formatMoney(amountPaise)}.`,
-      );
+    if (isDinner && !winner) {
+      return setError('Mark who won first — dinner is always on the winner.');
     }
+    if (!isDinner && !paidById) return setError('Say who paid.');
 
     onSubmit({
-      label: label.trim(),
+      type,
       amount: amountPaise,
-      category,
-      paidById,
-      splitMode,
-      shares:
-        splitMode === 'CUSTOM'
-          ? players
-              .map((person) => ({
-                userId: person.userId,
-                amount: parseRupees(shares[person.userId] ?? '') ?? 0,
-              }))
-              .filter((share) => share.amount > 0)
-          : undefined,
+      label: label.trim() || undefined,
+      // Dinner is resolved by the server from whoever won.
+      paidById: isDinner ? undefined : (paidById ?? undefined),
     });
 
-    setLabel('');
     setAmount('');
-    setShares({});
+    setLabel('');
   }
 
   if (players.length === 0) {
     return (
       <Card>
-        <Text style={styles.note}>Add players to the game first - someone has to pay the bill.</Text>
+        <Text style={styles.note}>Add players to the game first — someone has to pay the bill.</Text>
       </Card>
     );
   }
 
   return (
     <Card>
-      <SegmentedControl<ExpenseCategory>
-        value={category}
-        onChange={(next) => {
-          setCategory(next);
-          if (!label.trim()) setLabel(next === 'DINNER' ? 'Dinner' : '');
-        }}
-        options={[
-          { value: 'DINNER', label: 'Dinner' },
-          { value: 'OTHER', label: 'Other' },
-        ]}
-      />
-
-      <View style={styles.gap} />
-
-      <TextField
+      <Select<ExpenseType>
         label="What was it for"
-        value={label}
-        onChangeText={setLabel}
-        placeholder={category === 'DINNER' ? 'Biryani and drinks' : 'Cards, cab, chips'}
+        value={type}
+        options={TYPE_OPTIONS}
+        onChange={setType}
       />
 
       <TextField
@@ -116,74 +105,48 @@ export function ExpenseForm({
         placeholder="0"
       />
 
-      <Text style={styles.fieldLabel}>Who paid</Text>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipRow}>
-        {players.map((person) => {
-          const active = person.userId === paidById;
-          return (
-            <Pressable
-              key={person.userId}
-              onPress={() => setPaidById(person.userId)}
-              style={[styles.chip, active && styles.chipActive]}
-            >
-              <Text style={[styles.chipText, active && styles.chipTextActive]}>
-                {person.displayName}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </ScrollView>
-
-      <Text style={styles.fieldLabel}>How to split it</Text>
-      <SegmentedControl<SplitMode>
-        value={splitMode}
-        onChange={setSplitMode}
-        options={[
-          { value: 'EQUAL', label: 'Equally' },
-          { value: 'PAYER', label: 'My treat' },
-          { value: 'CUSTOM', label: 'Custom' },
-        ]}
-      />
-      <Text style={styles.hint}>
-        {splitMode === 'EQUAL'
-          ? 'Shared across everyone at the table, re-split automatically if someone joins later.'
-          : splitMode === 'PAYER'
-            ? 'Whoever paid covers the whole thing - nobody else chips in.'
-            : 'Set each person’s share by hand. They have to add up to the total.'}
-      </Text>
-
-      {splitMode === 'CUSTOM' ? (
-        <View style={styles.customBox}>
-          {players.map((person) => (
-            <View key={person.userId} style={styles.customRow}>
-              <Text style={styles.customName} numberOfLines={1}>
-                {person.displayName}
-              </Text>
-              <TextField
-                label=""
-                value={shares[person.userId] ?? ''}
-                onChangeText={(next) =>
-                  setShares((current) => ({ ...current, [person.userId]: next }))
-                }
-                keyboardType="decimal-pad"
-                placeholder="0"
-                style={styles.customInput}
-              />
-            </View>
-          ))}
-          <View style={styles.customTotalRow}>
-            <Text style={styles.customTotalLabel}>Shares add up to</Text>
-            <Text
-              style={[
-                styles.customTotalValue,
-                customTotal !== amountPaise && styles.customTotalBad,
-              ]}
-            >
-              {formatMoney(customTotal)} of {formatMoney(amountPaise)}
-            </Text>
-          </View>
+      {isDinner ? (
+        <View style={styles.onWinner}>
+          <Ionicons name="trophy" size={16} color={colors.gold} />
+          <Text style={styles.onWinnerText}>
+            {winner ? (
+              <>
+                Dinner is on <Text style={styles.strong}>{winner.displayName}</Text>, who won the
+                night.
+              </>
+            ) : (
+              'Nobody is marked as the winner yet. Dinner is always on the winner, so mark them first.'
+            )}
+          </Text>
         </View>
-      ) : null}
+      ) : (
+        <>
+          <Text style={styles.fieldLabel}>Who paid</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipRow}>
+            {players.map((person) => {
+              const active = person.userId === paidById;
+              return (
+                <Pressable
+                  key={person.userId}
+                  onPress={() => setPaidById(person.userId)}
+                  style={[styles.chip, active && styles.chipActive]}
+                >
+                  <Text style={[styles.chipText, active && styles.chipTextActive]}>
+                    {person.displayName}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        </>
+      )}
+
+      <TextField
+        label="Note (optional)"
+        value={label}
+        onChangeText={setLabel}
+        placeholder={isDinner ? 'Biryani from the usual place' : 'Anything worth remembering'}
+      />
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
@@ -193,7 +156,6 @@ export function ExpenseForm({
 }
 
 const styles = StyleSheet.create({
-  gap: { height: spacing(4) },
   fieldLabel: { ...font.smallStrong, color: colors.inkMuted, marginBottom: spacing(1.5) },
   chipRow: { marginBottom: spacing(4) },
   chip: {
@@ -209,35 +171,18 @@ const styles = StyleSheet.create({
   chipText: { ...font.smallStrong, color: colors.inkMuted },
   chipTextActive: { color: colors.white },
 
-  hint: {
-    ...font.small,
-    color: colors.inkFaint,
-    marginTop: spacing(2),
-    marginBottom: spacing(4),
-    lineHeight: 18,
-  },
-
-  customBox: {
-    marginTop: spacing(4),
+  onWinner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing(2.5),
     backgroundColor: colors.surfaceMuted,
     borderRadius: radius.md,
-    padding: spacing(3),
+    padding: spacing(3.5),
+    marginBottom: spacing(4),
   },
-  customRow: { flexDirection: 'row', alignItems: 'center', gap: spacing(3) },
-  customName: { ...font.body, color: colors.ink, flex: 1 },
-  customInput: { width: 110, marginBottom: spacing(2) },
-  customTotalRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.lineStrong,
-    paddingTop: spacing(2),
-    marginTop: spacing(1),
-  },
-  customTotalLabel: { ...font.small, color: colors.inkMuted },
-  customTotalValue: { ...font.smallStrong, color: colors.win },
-  customTotalBad: { color: colors.loss },
+  onWinnerText: { ...font.small, color: colors.inkMuted, flex: 1, lineHeight: 19 },
+  strong: { ...font.smallStrong, color: colors.ink },
 
-  error: { ...font.small, color: colors.loss, marginTop: spacing(3), marginBottom: spacing(2) },
+  error: { ...font.small, color: colors.loss, marginTop: spacing(1), marginBottom: spacing(3) },
   note: { ...font.small, color: colors.inkMuted, lineHeight: 20 },
 });

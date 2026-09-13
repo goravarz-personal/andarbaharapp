@@ -15,7 +15,7 @@ Three pieces, each free:
 | Piece | What it does | Who provides it |
 | --- | --- | --- |
 | **Database** | Holds the games, players and payments | Neon |
-| **API** | The rules — works out who owes whom | Render |
+| **API** | The rules — the ledger and the arithmetic | Render |
 | **App** | What your friends actually open | Render |
 
 The app and the API are kept separate on purpose. On the free plan the API
@@ -104,8 +104,8 @@ Still on your own phone, in the app:
 4. Repeat for everyone. They will each be asked to choose their own password
    the first time they sign in.
 
-Everyone can see every game, every player's record, and the whole who-owes-whom
-board. Only admins can record games or change numbers. If you want someone else
+Everyone can see every game and every player's record. Only admins can record
+games or change numbers. If you want someone else
 to be able to record games, open **Players** → **Manage the roster** → **Make
 admin**.
 
@@ -115,8 +115,8 @@ admin**.
 
 Something like this works. Replace the address with your own:
 
-> Made us an app for tracking our games — buy-ins, cash-outs, dinner, and who
-> owes who at the end.
+> Made us an app for tracking our games — buy-ins, cash-outs, who won, and
+> what the night cost.
 >
 > https://aadarbahar-app.onrender.com
 >

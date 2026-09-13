@@ -1,13 +1,7 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { ApiError } from '../lib/errors';
-import { sum } from '../lib/money';
-import {
-  computeGameLedger,
-  minimiseTransfers,
-  type LedgerExpenseInput,
-  type LedgerPlayerInput,
-} from './ledger.service';
+import { computeGameLedger, findWinnerId } from './ledger.service';
 
 export const gameInclude = {
   createdBy: { select: { id: true, username: true, displayName: true } },
@@ -18,21 +12,8 @@ export const gameInclude = {
     orderBy: { id: 'asc' },
   },
   expenses: {
-    include: {
-      paidBy: { select: { id: true, username: true, displayName: true } },
-      shares: {
-        include: { user: { select: { id: true, displayName: true } } },
-        orderBy: { id: 'asc' },
-      },
-    },
+    include: { paidBy: { select: { id: true, username: true, displayName: true } } },
     orderBy: { createdAt: 'asc' },
-  },
-  settlements: {
-    include: {
-      fromUser: { select: { id: true, username: true, displayName: true, avatarColor: true } },
-      toUser: { select: { id: true, username: true, displayName: true, avatarColor: true } },
-    },
-    orderBy: { amount: 'desc' },
   },
 } satisfies Prisma.GameInclude;
 
@@ -44,32 +25,28 @@ export async function findGameOrThrow(gameId: string): Promise<GameWithRelations
   return game;
 }
 
-function toLedgerPlayers(game: GameWithRelations): LedgerPlayerInput[] {
-  return game.players.map((player) => ({
-    id: player.id,
-    userId: player.userId,
-    displayName: player.user.displayName,
-    buyIn: player.buyIn,
-    cashOut: player.cashOut,
-    isWinner: player.isWinner,
-  }));
-}
-
-function toLedgerExpenses(game: GameWithRelations): LedgerExpenseInput[] {
-  return game.expenses.map((expense) => ({
-    id: expense.id,
-    label: expense.label,
-    category: expense.category,
-    amount: expense.amount,
-    paidById: expense.paidById,
-    splitMode: expense.splitMode,
-    shares: expense.shares.map((share) => ({ userId: share.userId, amount: share.amount })),
-  }));
+export function ledgerOf(game: GameWithRelations) {
+  return computeGameLedger(
+    game.players.map((player) => ({
+      id: player.id,
+      userId: player.userId,
+      displayName: player.user.displayName,
+      buyIn: player.buyIn,
+      cashOut: player.cashOut,
+      isWinner: player.isWinner,
+    })),
+    game.expenses.map((expense) => ({
+      id: expense.id,
+      type: expense.type,
+      amount: expense.amount,
+      paidById: expense.paidById,
+    })),
+  );
 }
 
 /** Full game payload the app renders, ledger already worked out. */
 export function serializeGame(game: GameWithRelations) {
-  const ledger = computeGameLedger(toLedgerPlayers(game), toLedgerExpenses(game));
+  const ledger = ledgerOf(game);
   const lineByUser = new Map(ledger.lines.map((line) => [line.userId, line]));
 
   return {
@@ -78,71 +55,59 @@ export function serializeGame(game: GameWithRelations) {
     title: game.title,
     location: game.location,
     notes: game.notes,
-    status: game.status,
     createdAt: game.createdAt.toISOString(),
     updatedAt: game.updatedAt.toISOString(),
     createdBy: game.createdBy,
     playerCount: game.players.length,
-    players: game.players.map((player) => {
-      const line = lineByUser.get(player.userId);
-      return {
-        id: player.id,
-        userId: player.userId,
-        username: player.user.username,
-        displayName: player.user.displayName,
-        avatarColor: player.user.avatarColor,
-        buyIn: player.buyIn,
-        cashOut: player.cashOut,
-        isWinner: player.isWinner,
-        notes: player.notes,
-        tableNet: line?.tableNet ?? player.cashOut - player.buyIn,
-        expensePaid: line?.expensePaid ?? 0,
-        expenseShare: line?.expenseShare ?? 0,
-        net: line?.net ?? player.cashOut - player.buyIn,
-      };
-    }),
+    players: game.players.map((player) => ({
+      id: player.id,
+      userId: player.userId,
+      username: player.user.username,
+      displayName: player.user.displayName,
+      avatarColor: player.user.avatarColor,
+      buyIn: player.buyIn,
+      cashOut: player.cashOut,
+      isWinner: player.isWinner,
+      notes: player.notes,
+      net: lineByUser.get(player.userId)?.net ?? player.cashOut - player.buyIn,
+    })),
     expenses: game.expenses.map((expense) => ({
       id: expense.id,
+      type: expense.type,
       label: expense.label,
-      category: expense.category,
       amount: expense.amount,
-      splitMode: expense.splitMode,
       paidBy: expense.paidBy,
-      shares: expense.shares.map((share) => ({
-        userId: share.userId,
-        displayName: share.user.displayName,
-        amount: share.amount,
-      })),
     })),
     totals: ledger.totals,
     balanced: ledger.balanced,
-    winners: game.players
-      .filter((player) => player.isWinner)
-      .map((player) => ({
-        userId: player.userId,
-        displayName: player.user.displayName,
-        net: lineByUser.get(player.userId)?.net ?? 0,
-      })),
-    settlements: game.settlements.map(serializeSettlement),
+    winner: (() => {
+      const seat = game.players.find((player) => player.isWinner);
+      if (!seat) return null;
+      return {
+        userId: seat.userId,
+        displayName: seat.user.displayName,
+        net: lineByUser.get(seat.userId)?.net ?? 0,
+      };
+    })(),
   };
 }
 
 /** Lighter payload for the games list. */
 export function serializeGameSummary(game: GameWithRelations) {
-  const ledger = computeGameLedger(toLedgerPlayers(game), toLedgerExpenses(game));
+  const ledger = ledgerOf(game);
+  const winner = game.players.find((player) => player.isWinner);
+
   return {
     id: game.id,
     playedOn: game.playedOn.toISOString(),
     title: game.title,
     location: game.location,
-    status: game.status,
     playerCount: game.players.length,
     totals: ledger.totals,
     balanced: ledger.balanced,
-    pendingSettlements: game.settlements.filter((s) => s.status === 'PENDING').length,
-    winners: game.players
-      .filter((player) => player.isWinner)
-      .map((player) => ({ userId: player.userId, displayName: player.user.displayName })),
+    winner: winner
+      ? { userId: winner.userId, displayName: winner.user.displayName }
+      : null,
     players: game.players.map((player) => ({
       userId: player.userId,
       displayName: player.user.displayName,
@@ -152,98 +117,55 @@ export function serializeGameSummary(game: GameWithRelations) {
   };
 }
 
-type SettlementWithUsers = Prisma.SettlementGetPayload<{
-  include: {
-    fromUser: { select: { id: true; username: true; displayName: true; avatarColor: true } };
-    toUser: { select: { id: true; username: true; displayName: true; avatarColor: true } };
-  };
-}>;
-
-export function serializeSettlement(settlement: SettlementWithUsers) {
-  return {
-    id: settlement.id,
-    gameId: settlement.gameId,
-    amount: settlement.amount,
-    status: settlement.status,
-    kind: settlement.kind,
-    note: settlement.note,
-    paidAt: settlement.paidAt ? settlement.paidAt.toISOString() : null,
-    createdAt: settlement.createdAt.toISOString(),
-    from: settlement.fromUser,
-    to: settlement.toUser,
-  };
-}
-
 /**
- * Check an expense before it is written: the payer has to be at the table, and
- * a custom split has to name real players and add up to the full amount.
+ * Decides who an expense is recorded against.
+ *
+ * Dinner is always on the winner - that is the house rule this app exists to
+ * keep track of - so it is resolved here rather than taken from the client.
+ * Anything else needs someone at the table named explicitly.
  */
-export function assertExpenseIsConsistent(
-  input: { amount: number; paidById: string; splitMode: string; shares?: Array<{ userId: string; amount: number }> },
-  seatedUserIds: string[],
-): void {
-  if (!seatedUserIds.includes(input.paidById)) {
+export async function resolveExpensePayer(
+  gameId: string,
+  input: { type: string; paidById?: string },
+): Promise<string> {
+  const seats = await prisma.gamePlayer.findMany({
+    where: { gameId },
+    select: { userId: true, isWinner: true },
+  });
+
+  if (seats.length === 0) {
+    throw ApiError.badRequest('Add players to the game before recording what it cost.');
+  }
+
+  if (input.type === 'DINNER') {
+    const winnerId = findWinnerId(seats);
+    if (!winnerId) {
+      throw ApiError.badRequest(
+        'Mark who won first - dinner is always on the winner.',
+      );
+    }
+    return winnerId;
+  }
+
+  if (!input.paidById) throw ApiError.badRequest('Say who paid.');
+  if (!seats.some((seat) => seat.userId === input.paidById)) {
     throw ApiError.badRequest('Whoever paid needs to be one of the players in this game.');
   }
-
-  if (input.splitMode !== 'CUSTOM') return;
-
-  const shares = input.shares ?? [];
-  if (shares.length === 0) {
-    throw ApiError.badRequest('A custom split needs at least one share.');
-  }
-  const stranger = shares.find((share) => !seatedUserIds.includes(share.userId));
-  if (stranger) {
-    throw ApiError.badRequest('A custom split can only include players in this game.');
-  }
-  const total = sum(shares.map((share) => share.amount));
-  if (total !== input.amount) {
-    throw ApiError.badRequest(
-      `The custom shares add up to ${total} but the expense is ${input.amount}. They have to match.`,
-    );
-  }
+  return input.paidById;
 }
 
 /**
- * Work out who pays whom for this game and store it. Replaces any previously
- * generated (AUTO) settlements; hand-recorded ones are left alone.
+ * Only one player can be the winner, because the night's costs come out of
+ * their winnings and "split between the winners" is not a rule anyone wants to
+ * argue about at midnight.
  */
-export async function settleGame(gameId: string, force = false) {
-  const game = await findGameOrThrow(gameId);
-
-  if (game.players.length === 0) {
-    throw ApiError.badRequest('Add players to the game before settling it.');
-  }
-
-  const alreadyPaid = game.settlements.filter((s) => s.kind === 'AUTO' && s.status === 'PAID');
-  if (alreadyPaid.length > 0 && !force) {
-    throw ApiError.conflict(
-      'Some payments for this game are already marked paid. Re-settling will wipe them - send force=true to go ahead.',
-      { paidCount: alreadyPaid.length },
-    );
-  }
-
-  const ledger = computeGameLedger(toLedgerPlayers(game), toLedgerExpenses(game));
-  const transfers = minimiseTransfers(
-    ledger.lines.map((line) => ({ userId: line.userId, net: line.net })),
-  );
-
-  await prisma.$transaction([
-    prisma.settlement.deleteMany({ where: { gameId, kind: 'AUTO' } }),
-    ...transfers.map((transfer) =>
-      prisma.settlement.create({
-        data: {
-          gameId,
-          fromUserId: transfer.fromUserId,
-          toUserId: transfer.toUserId,
-          amount: transfer.amount,
-          kind: 'AUTO',
-          status: 'PENDING',
-        },
-      }),
-    ),
-    prisma.game.update({ where: { id: gameId }, data: { status: 'SETTLED' } }),
-  ]);
-
-  return findGameOrThrow(gameId);
+export async function clearOtherWinners(
+  tx: Prisma.TransactionClient,
+  gameId: string,
+  keepUserId: string,
+): Promise<void> {
+  await tx.gamePlayer.updateMany({
+    where: { gameId, userId: { not: keepUserId }, isWinner: true },
+    data: { isWinner: false },
+  });
 }

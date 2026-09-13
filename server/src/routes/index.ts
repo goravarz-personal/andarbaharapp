@@ -2,7 +2,6 @@ import { Router } from 'express';
 import { authRouter } from './auth.routes';
 import { playersRouter } from './players.routes';
 import { gamesRouter } from './games.routes';
-import { settlementsRouter } from './settlements.routes';
 import { requireAuth, currentUser } from '../middleware/auth';
 import { asyncHandler } from '../middleware/validate';
 import { getDashboard } from '../services/stats.service';
@@ -25,4 +24,3 @@ apiRouter.get(
 apiRouter.use('/auth', authRouter);
 apiRouter.use('/players', playersRouter);
 apiRouter.use('/games', gamesRouter);
-apiRouter.use('/settlements', settlementsRouter);

@@ -1,5 +1,4 @@
 import type {
-  Balances,
   Dashboard,
   ExpenseInput,
   Game,
@@ -7,11 +6,9 @@ import type {
   GameSummary,
   HistoryRow,
   LeaderboardRow,
-  OutstandingRow,
   Player,
   PlayerStats,
   Role,
-  Settlement,
 } from './types';
 
 export class ApiError extends Error {
@@ -98,7 +95,7 @@ export class ApiClient {
   }
 
   me() {
-    return this.request<{ user: Player; stats: PlayerStats; balances: Balances }>('/auth/me');
+    return this.request<{ user: Player; stats: PlayerStats }>('/auth/me');
   }
 
   updateMe(body: { displayName?: string; email?: string; phone?: string }) {
@@ -135,12 +132,9 @@ export class ApiClient {
   }
 
   player(id: string) {
-    return this.request<{
-      player: Player;
-      stats: PlayerStats;
-      history: HistoryRow[];
-      balances: Balances;
-    }>(`/players/${id}`);
+    return this.request<{ player: Player; stats: PlayerStats; history: HistoryRow[] }>(
+      `/players/${id}`,
+    );
   }
 
   createPlayer(body: {
@@ -180,11 +174,8 @@ export class ApiClient {
 
   // --- games --------------------------------------------------------------
 
-  games(params: { playerId?: string; status?: string } = {}) {
-    const query = new URLSearchParams();
-    if (params.playerId) query.set('playerId', params.playerId);
-    if (params.status) query.set('status', params.status);
-    const suffix = query.toString() ? `?${query.toString()}` : '';
+  games(params: { playerId?: string } = {}) {
+    const suffix = params.playerId ? `?playerId=${encodeURIComponent(params.playerId)}` : '';
     return this.request<{ games: GameSummary[] }>(`/games${suffix}`);
   }
 
@@ -243,59 +234,6 @@ export class ApiClient {
     });
   }
 
-  settlementPreview(gameId: string) {
-    return this.request<{
-      ledger: { lines: Array<{ userId: string; displayName: string; net: number }> };
-      transfers: Array<{
-        fromUserId: string;
-        toUserId: string;
-        amount: number;
-        fromName: string;
-        toName: string;
-      }>;
-      balanced: boolean;
-    }>(`/games/${gameId}/settlement-preview`);
-  }
-
-  settleGame(gameId: string, force = false) {
-    return this.request<{ game: Game }>(`/games/${gameId}/settle${force ? '?force=true' : ''}`, {
-      method: 'POST',
-      body: {},
-    });
-  }
-
-  reopenGame(gameId: string) {
-    return this.request<{ game: Game }>(`/games/${gameId}/reopen`, { method: 'POST', body: {} });
-  }
-
-  // --- settling up --------------------------------------------------------
-
-  settlements(params: { status?: string; userId?: string } = {}) {
-    const query = new URLSearchParams();
-    if (params.status) query.set('status', params.status);
-    if (params.userId) query.set('userId', params.userId);
-    const suffix = query.toString() ? `?${query.toString()}` : '';
-    return this.request<{ settlements: Settlement[] }>(`/settlements${suffix}`);
-  }
-
-  outstanding() {
-    return this.request<{ outstanding: OutstandingRow[] }>('/settlements/outstanding');
-  }
-
-  createSettlement(body: { fromUserId: string; toUserId: string; amount: number; note?: string }) {
-    return this.request<{ settlement: Settlement }>('/settlements', { method: 'POST', body });
-  }
-
-  markSettlement(id: string, status: 'PAID' | 'PENDING') {
-    return this.request<{ settlement: Settlement }>(`/settlements/${id}`, {
-      method: 'PATCH',
-      body: { status },
-    });
-  }
-
-  deleteSettlement(id: string) {
-    return this.request<{ deleted: boolean }>(`/settlements/${id}`, { method: 'DELETE' });
-  }
 }
 
 function safeJson(text: string): unknown {

@@ -20,10 +20,8 @@ import { AddExpenseScreen } from '../screens/AddExpenseScreen';
 import { PlayersScreen } from '../screens/PlayersScreen';
 import { PlayerDetailScreen } from '../screens/PlayerDetailScreen';
 import { AddPlayerScreen } from '../screens/AddPlayerScreen';
-import { SettleScreen } from '../screens/SettleScreen';
 import { ProfileScreen } from '../screens/ProfileScreen';
 import { ChangePasswordScreen } from '../screens/ChangePasswordScreen';
-import { RecordPaymentScreen } from '../screens/RecordPaymentScreen';
 import { ManageRosterScreen } from '../screens/ManageRosterScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -45,7 +43,6 @@ const TAB_ICONS: Record<keyof TabParamList, { on: keyof typeof Ionicons.glyphMap
   Home: { on: 'home', off: 'home-outline' },
   Games: { on: 'dice', off: 'dice-outline' },
   Players: { on: 'people', off: 'people-outline' },
-  Settle: { on: 'swap-horizontal', off: 'swap-horizontal-outline' },
   Profile: { on: 'person-circle', off: 'person-circle-outline' },
 };
 
@@ -74,7 +71,6 @@ function MainTabs() {
       />
       <Tabs.Screen name="Games" component={GamesScreen} options={{ title: 'Games' }} />
       <Tabs.Screen name="Players" component={PlayersScreen} options={{ title: 'Players' }} />
-      <Tabs.Screen name="Settle" component={SettleScreen} options={{ title: 'Settle up' }} />
       <Tabs.Screen name="Profile" component={ProfileScreen} options={{ title: 'You' }} />
     </Tabs.Navigator>
   );
@@ -130,7 +126,6 @@ export function RootNavigator() {
             <Stack.Screen name="AddExpense" component={AddExpenseScreen} options={{ title: 'Add an expense' }} />
             <Stack.Screen name="PlayerDetail" component={PlayerDetailScreen} options={{ title: 'Player' }} />
             <Stack.Screen name="AddPlayer" component={AddPlayerScreen} options={{ title: 'New player' }} />
-            <Stack.Screen name="RecordPayment" component={RecordPaymentScreen} options={{ title: 'Record a payment' }} />
             <Stack.Screen name="ManageRoster" component={ManageRosterScreen} options={{ title: 'Roster' }} />
             <Stack.Screen name="ChangePassword" component={ChangePasswordScreen} options={{ title: 'Change password' }} />
             <Stack.Screen name="ServerSettings" component={ServerSettingsScreen} options={{ title: 'Server' }} />
