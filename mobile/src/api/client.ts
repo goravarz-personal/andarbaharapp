@@ -2,13 +2,13 @@ import type {
   Dashboard,
   ExpenseInput,
   Game,
-  GamePlayerInput,
   GameSummary,
   HistoryRow,
   LeaderboardRow,
   Player,
   PlayerStats,
   Role,
+  SeatPlayerInput,
 } from './types';
 
 export class ApiError extends Error {
@@ -183,14 +183,8 @@ export class ApiClient {
     return this.request<{ game: Game }>(`/games/${id}`);
   }
 
-  createGame(body: {
-    playedOn: string;
-    title?: string;
-    location?: string;
-    notes?: string;
-    players?: GamePlayerInput[];
-    expenses?: ExpenseInput[];
-  }) {
+  /** Opens a night. Players are seated afterwards, as they turn up. */
+  createGame(body: { playedOn: string; title?: string; location?: string; notes?: string }) {
     return this.request<{ game: Game }>('/games', { method: 'POST', body });
   }
 
@@ -205,18 +199,47 @@ export class ApiClient {
     return this.request<{ deleted: boolean }>(`/games/${id}`, { method: 'DELETE' });
   }
 
-  upsertGamePlayer(gameId: string, body: GamePlayerInput) {
-    return this.request<{ game: Game }>(`/games/${gameId}/players`, { method: 'POST', body });
+  /** Sit somebody down - an existing player, or one created on the spot. */
+  seatPlayer(gameId: string, body: SeatPlayerInput) {
+    return this.request<{ game: Game; temporaryPassword: string | null }>(
+      `/games/${gameId}/players`,
+      { method: 'POST', body },
+    );
   }
 
-  updateGamePlayer(
-    gameId: string,
-    seatId: string,
-    body: { buyIn?: number; cashOut?: number; isBanker?: boolean; notes?: string },
-  ) {
+  updateGamePlayer(gameId: string, seatId: string, body: { isBanker?: boolean; notes?: string }) {
     return this.request<{ game: Game }>(`/games/${gameId}/players/${seatId}`, {
       method: 'PATCH',
       body,
+    });
+  }
+
+  /** Another trip to the banker. */
+  addBuyIn(gameId: string, seatId: string, amount: number) {
+    return this.request<{ game: Game }>(`/games/${gameId}/players/${seatId}/buy-ins`, {
+      method: 'POST',
+      body: { amount },
+    });
+  }
+
+  removeBuyIn(gameId: string, seatId: string, buyInId: string) {
+    return this.request<{ game: Game }>(
+      `/games/${gameId}/players/${seatId}/buy-ins/${buyInId}`,
+      { method: 'DELETE' },
+    );
+  }
+
+  /** Cashing out, which happens once. */
+  cashOut(gameId: string, seatId: string, amount: number) {
+    return this.request<{ game: Game }>(`/games/${gameId}/players/${seatId}/cash-out`, {
+      method: 'POST',
+      body: { amount },
+    });
+  }
+
+  undoCashOut(gameId: string, seatId: string) {
+    return this.request<{ game: Game }>(`/games/${gameId}/players/${seatId}/cash-out`, {
+      method: 'DELETE',
     });
   }
 

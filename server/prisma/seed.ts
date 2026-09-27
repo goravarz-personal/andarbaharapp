@@ -59,31 +59,83 @@ async function seedDemo(adminId: string) {
     (typeof people)[number],
   ];
 
-  // Night one. Everyone buys 2000 of chips from Ravi, who holds the bank.
-  // 8000 of chips out, 8000 back in. Meera wins the most, so dinner is hers.
+  const twoWeeksAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
+  const evening = (base: Date, hours: number) =>
+    new Date(base.getTime() + hours * 60 * 60 * 1000);
+
+  // Night one. Ravi holds the bank. Meera runs dry twice and buys in again,
+  // which is why her buy-in is 3000 across three trips. 9000 of chips out,
+  // 9000 back in. Two people bought food; the whole bill is Meera's, since she
+  // won the most.
   const gameOne = await prisma.game.create({
     data: {
-      playedOn: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000),
+      playedOn: twoWeeksAgo,
       title: 'Saturday-Regular',
       location: 'Katte Room',
       createdById: adminId,
       players: {
         create: [
-          { userId: ravi.id, buyIn: toMinor(2000), cashOut: toMinor(1800), isBanker: true },
-          { userId: meera.id, buyIn: toMinor(2000), cashOut: toMinor(3800) },
-          { userId: arjun.id, buyIn: toMinor(2000), cashOut: toMinor(1400) },
-          { userId: sana.id, buyIn: toMinor(2000), cashOut: toMinor(1000) },
+          {
+            userId: ravi.id,
+            isBanker: true,
+            joinedAt: evening(twoWeeksAgo, 0),
+            cashOut: toMinor(1800),
+            cashedOutAt: evening(twoWeeksAgo, 4),
+            buyIns: { create: [{ amount: toMinor(2000), at: evening(twoWeeksAgo, 0) }] },
+          },
+          {
+            userId: meera.id,
+            joinedAt: evening(twoWeeksAgo, 0),
+            cashOut: toMinor(4800),
+            cashedOutAt: evening(twoWeeksAgo, 4),
+            buyIns: {
+              create: [
+                { amount: toMinor(1000), at: evening(twoWeeksAgo, 0) },
+                { amount: toMinor(1000), at: evening(twoWeeksAgo, 1.5) },
+                { amount: toMinor(1000), at: evening(twoWeeksAgo, 2.5) },
+              ],
+            },
+          },
+          {
+            userId: arjun.id,
+            joinedAt: evening(twoWeeksAgo, 0.5),
+            cashOut: toMinor(1400),
+            cashedOutAt: evening(twoWeeksAgo, 4),
+            buyIns: { create: [{ amount: toMinor(2000), at: evening(twoWeeksAgo, 0.5) }] },
+          },
+          {
+            userId: sana.id,
+            joinedAt: evening(twoWeeksAgo, 1),
+            cashOut: toMinor(1000),
+            cashedOutAt: evening(twoWeeksAgo, 4),
+            buyIns: { create: [{ amount: toMinor(2000), at: evening(twoWeeksAgo, 1) }] },
+          },
         ],
       },
       expenses: {
         create: [
-          // No shares: dinner lands on whoever won the most.
-          { label: 'Biryani and drinks', amount: toMinor(1200), type: 'DINNER' },
-          // Ravi and Arjun went halves on the new decks.
+          // Ravi got the starters in, Sana ordered the biryani. Together they
+          // are the dinner bill, and Meera carries all of it.
+          {
+            label: 'Starters',
+            amount: toMinor(400),
+            type: 'DINNER',
+            paidById: ravi.id,
+            at: evening(twoWeeksAgo, 1.5),
+          },
+          {
+            label: 'Biryani',
+            amount: toMinor(1200),
+            type: 'DINNER',
+            paidById: sana.id,
+            at: evening(twoWeeksAgo, 2),
+          },
           {
             label: 'New decks',
             amount: toMinor(400),
             type: 'CARDS',
+            paidById: arjun.id,
+            at: evening(twoWeeksAgo, 0.5),
             shares: { create: [{ userId: ravi.id }, { userId: arjun.id }] },
           },
         ],
@@ -91,24 +143,59 @@ async function seedDemo(adminId: string) {
     },
   });
 
-  // Night two. Sana banks it. Arjun takes the most off the table and buys the
-  // pizza; Ravi also finishes ahead, but the bill is not his to carry.
+  // Night two, three days ago. Still going: Sana banks it, and Arjun has not
+  // cashed out yet, so the night has no settled result.
+  const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
   const gameTwo = await prisma.game.create({
     data: {
-      playedOn: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000),
+      playedOn: threeDaysAgo,
       title: 'Wednesday-Regular',
       location: 'Katte Room',
       createdById: adminId,
       players: {
         create: [
-          { userId: ravi.id, buyIn: toMinor(3000), cashOut: toMinor(3300) },
-          { userId: meera.id, buyIn: toMinor(3000), cashOut: toMinor(1200) },
-          { userId: arjun.id, buyIn: toMinor(3000), cashOut: toMinor(5400) },
-          { userId: sana.id, buyIn: toMinor(3000), cashOut: toMinor(2100), isBanker: true },
+          {
+            userId: ravi.id,
+            joinedAt: evening(threeDaysAgo, 0),
+            cashOut: toMinor(3300),
+            cashedOutAt: evening(threeDaysAgo, 3),
+            buyIns: { create: [{ amount: toMinor(3000), at: evening(threeDaysAgo, 0) }] },
+          },
+          {
+            userId: meera.id,
+            joinedAt: evening(threeDaysAgo, 0),
+            cashOut: toMinor(1200),
+            cashedOutAt: evening(threeDaysAgo, 3),
+            buyIns: { create: [{ amount: toMinor(3000), at: evening(threeDaysAgo, 0) }] },
+          },
+          {
+            userId: arjun.id,
+            joinedAt: evening(threeDaysAgo, 0),
+            buyIns: {
+              create: [
+                { amount: toMinor(3000), at: evening(threeDaysAgo, 0) },
+                { amount: toMinor(2000), at: evening(threeDaysAgo, 2) },
+              ],
+            },
+          },
+          {
+            userId: sana.id,
+            isBanker: true,
+            joinedAt: evening(threeDaysAgo, 0),
+            buyIns: { create: [{ amount: toMinor(3000), at: evening(threeDaysAgo, 0) }] },
+          },
         ],
       },
       expenses: {
-        create: [{ label: 'Pizza', amount: toMinor(1800), type: 'DINNER' }],
+        create: [
+          {
+            label: 'Pizza',
+            amount: toMinor(1800),
+            type: 'DINNER',
+            paidById: ravi.id,
+            at: evening(threeDaysAgo, 2),
+          },
+        ],
       },
     },
   });

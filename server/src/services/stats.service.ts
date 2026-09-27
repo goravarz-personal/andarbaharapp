@@ -47,8 +47,12 @@ async function historyFor(userId: string, where: Prisma.GameWhereInput = {}): Pr
 
   const rows: PlayerHistoryRow[] = [];
   for (const game of games) {
-    const line = ledgerOf(game).lines.find((candidate) => candidate.userId === userId);
-    if (!line) continue;
+    const ledger = ledgerOf(game);
+    // A night still being played has no settled result, and dinner has not
+    // found its owner yet. It stays out of everyone's record until it is done.
+    if (!ledger.complete) continue;
+    const line = ledger.lines.find((candidate) => candidate.userId === userId);
+    if (!line || line.net === null || line.tableNet === null || line.cashOut === null) continue;
     rows.push({
       gameId: game.id,
       playedOn: game.playedOn.toISOString(),
@@ -105,14 +109,17 @@ export async function getLeaderboard() {
     prisma.game.findMany({ include: gameInclude, orderBy: { playedOn: 'desc' } }),
   ]);
 
-  const ledgers = games.map((game) => ({ game, lines: ledgerOf(game).lines }));
+  const ledgers = games
+    .map((game) => ({ game, ledger: ledgerOf(game) }))
+    .filter((entry) => entry.ledger.complete)
+    .map((entry) => ({ game: entry.game, lines: entry.ledger.lines }));
 
   return users
     .map((user) => {
       const rows: PlayerHistoryRow[] = [];
       for (const { game, lines } of ledgers) {
         const line = lines.find((candidate) => candidate.userId === user.id);
-        if (!line) continue;
+        if (!line || line.net === null || line.tableNet === null || line.cashOut === null) continue;
         rows.push({
           gameId: game.id,
           playedOn: game.playedOn.toISOString(),

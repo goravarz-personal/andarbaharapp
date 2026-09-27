@@ -8,7 +8,7 @@ import { Badge, Button, Card, EmptyState, ErrorNotice, LoadingView, Money } from
 import { useApiQuery } from '../state/useApiQuery';
 import { useAuth } from '../state/AuthContext';
 import { formatMoney } from '../utils/money';
-import { formatDate } from '../utils/date';
+import { formatDate, plural } from '../utils/date';
 import { colors, font, spacing } from '../theme';
 import type { RootStackParamList } from '../navigation/types';
 import type { GameSummary } from '../api/types';
@@ -29,7 +29,7 @@ export function GamesScreen() {
       footer={
         isAdmin ? (
           <Button
-            label="Record a game night"
+            label="Start a game night"
             icon="add"
             onPress={() => navigation.navigate('GameEditor', {})}
           />
@@ -47,7 +47,7 @@ export function GamesScreen() {
               title="No games yet"
               message={
                 isAdmin
-                  ? 'Record a game night to start the ledger.'
+                  ? 'Start a game night and seat the players as they turn up.'
                   : 'Games recorded by the admin will show up here.'
               }
             />
@@ -73,7 +73,9 @@ export function GamesScreen() {
                       {game.location ? ` · ${game.location}` : ''}
                     </Text>
                   </View>
-                  {game.balanced ? null : (
+                  {!game.complete ? (
+                    <Badge label="In play" tone="felt" icon="ellipse" />
+                  ) : game.balanced ? null : (
                     <Badge label="Check numbers" tone="warn" icon="alert-circle-outline" />
                   )}
                 </View>
@@ -85,19 +87,32 @@ export function GamesScreen() {
                   {mine ? (
                     <View style={styles.stat}>
                       <Text style={styles.statLabel}>YOU</Text>
-                      <Money value={mine.net} signed size="small" />
+                      {!game.complete ? (
+                        <Text style={styles.statPending}>
+                          {mine.isPlaying ? 'Still in' : 'In play'}
+                        </Text>
+                      ) : (
+                        <Money value={mine.net ?? 0} signed size="small" />
+                      )}
                     </View>
                   ) : null}
                 </View>
 
-                {game.topWinner ? (
+                {!game.complete ? (
+                  <View style={styles.winnerRow}>
+                    <Ionicons name="time-outline" size={13} color={colors.feltSoft} />
+                    <Text style={styles.winnerText}>
+                      {plural(game.playersStillIn, 'player')} still to cash out
+                    </Text>
+                  </View>
+                ) : game.topWinner ? (
                   <View style={styles.winnerRow}>
                     <Ionicons name="trophy" size={13} color={colors.gold} />
                     <Text style={styles.winnerText}>{game.topWinner.displayName} won the most</Text>
                   </View>
                 ) : null}
 
-                {!game.balanced ? (
+                {game.complete && !game.balanced ? (
                   <View style={styles.warnRow}>
                     <Ionicons name="alert-circle-outline" size={13} color={colors.warn} />
                     <Text style={styles.warnText}>
@@ -142,6 +157,7 @@ const styles = StyleSheet.create({
   stat: { minWidth: 52 },
   statLabel: { ...font.caption, color: colors.inkFaint, fontSize: 10 },
   statValue: { ...font.smallStrong, color: colors.ink, marginTop: 2 },
+  statPending: { ...font.smallStrong, color: colors.inkFaint, marginTop: 2 },
 
   winnerRow: { flexDirection: 'row', alignItems: 'center', gap: spacing(1.5) },
   winnerText: { ...font.small, color: colors.inkMuted, flex: 1 },

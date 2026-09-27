@@ -6,15 +6,18 @@
 //
 // How a night works, and therefore how this is shaped:
 //
-//   * One player is the banker. Everyone buys chips from them (buyIn) and
-//     cashes chips back in at the end (cashOut). Chips are conserved, so
-//     total buy-in = total cash-out. That is the check that the numbers were
-//     typed in right.
-//   * cashOut is the GROSS result - what they won at the table, before any of
-//     the night's costs come off.
-//   * Costs are then borne by particular players: dinner by whoever won the
-//     most, anything else by whoever is chipping in for it.
-//   * A player's real result is  (cashOut - buyIn) - their share of the costs.
+//   * One player is the banker. Everyone buys chips from them, and a player
+//     can buy in again whenever they run dry - so buy-ins are a list, each
+//     with its own time, not a single number.
+//   * Cashing out happens ONCE, at the end, and is what they walked away
+//     with. Until then the seat has no cash-out and the player is still in.
+//   * Chips are conserved, so once everyone has cashed out the buy-ins and
+//     the cash-outs have to match.
+//   * Several people can buy food over the evening. Each of those is its own
+//     row; together they are the night's dinner, and the whole of it falls on
+//     whoever won the most.
+//   * A player's result is  (cash-out - what they bought in for) - their
+//     share of the night's costs.
 //
 // Nobody is marked as the winner by hand. Winning is what the numbers say.
 
@@ -47,6 +50,7 @@ model User {
 
   gameEntries   GamePlayer[]
   createdGames  Game[]         @relation("GameCreatedBy")
+  expensesPaid  Expense[]      @relation("ExpensePaidBy")
   expenseShares ExpenseShare[]
 
   @@index([role])
@@ -70,48 +74,68 @@ model Game {
   @@index([playedOn])
 }
 
-/// A player's seat: chips bought, chips cashed back in, and who held the bank.
+/// A player's seat for the night.
 model GamePlayer {
-  id      String @id @default(cuid())
-  gameId  String
-  userId  String
-  /// Chips bought from the banker.
-  buyIn   Int    @default(0)
-  /// Chips cashed back in - the table result, before any costs come off.
-  cashOut Int    @default(0)
-  /// At most one per game. Informational: whoever ran the bank that night.
+  id       String   @id @default(cuid())
+  gameId   String
+  userId   String
+  /// When they sat down.
+  joinedAt DateTime @default(now())
+  /// What they walked away with. Null while they are still playing.
+  cashOut     Int?
+  cashedOutAt DateTime?
+  /// At most one per game. Whoever ran the bank that night.
   isBanker Boolean @default(false)
   notes    String?
 
-  game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  game   Game   @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  buyIns BuyIn[]
 
   @@unique([gameId, userId])
   @@index([userId])
 }
 
-/// What the night cost.
+/// One trip to the banker for chips. A player can make several in a night.
+model BuyIn {
+  id           String   @id @default(cuid())
+  gamePlayerId String
+  amount       Int
+  /// When the chips were bought.
+  at           DateTime @default(now())
+
+  gamePlayer GamePlayer @relation(fields: [gamePlayerId], references: [id], onDelete: Cascade)
+
+  @@index([gamePlayerId])
+}
+
+/// What the night cost. Several dinner rows add up to one dinner bill.
 model Expense {
   id     String  @id @default(cuid())
   gameId String
   /// See ExpenseTypeSchema in src/types/enums.ts.
   type   String  @default("DINNER")
-  /// Optional note - "biryani from the usual place". The type carries the meaning.
+  /// Optional note - "starters", "the biryani".
   label  String?
   amount Int
+  /// Who actually laid the money out.
+  paidById String?
+  /// When it was spent.
+  at       DateTime @default(now())
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   game   Game           @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  paidBy User?          @relation("ExpensePaidBy", fields: [paidById], references: [id])
   shares ExpenseShare[]
 
   @@index([gameId])
 }
 
-/// Who is carrying a cost. Dinner stores nothing here - it always falls on
-/// whoever won the most, which is worked out when the game is read, so that
-/// correcting a cash-out moves the bill with it.
+/// Who is carrying a cost. Dinner stores nothing here - the whole bill falls
+/// on whoever won the most, worked out when the game is read, so that
+/// correcting a cash-out moves it with them.
 model ExpenseShare {
   id        String @id @default(cuid())
   expenseId String

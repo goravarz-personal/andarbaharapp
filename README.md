@@ -7,34 +7,49 @@ Every player gets their own login and can see the whole ledger. An admin
 records the games and manages the group.
 
 <p align="center">
-  <img src="docs/screens/dashboard.png" width="30%" alt="Dashboard showing what you are owed" />
-  <img src="docs/screens/game-detail.png" width="30%" alt="A game night with buy-ins, cash-outs and expenses" />
-  <img src="docs/screens/players.png" width="30%" alt="The leaderboard" />
+  <img src="docs/screens/dashboard.png" width="24%" alt="Dashboard showing your record and recent nights" />
+  <img src="docs/screens/live-table.png" width="24%" alt="A night in play: who is seated, who has cashed out" />
+  <img src="docs/screens/seat.png" width="24%" alt="One player's trips to the banker, each with its time" />
+  <img src="docs/screens/dinner.png" width="24%" alt="What the night cost, and what the winner owes whoever paid" />
 </p>
 
 ## What it does
 
-**Games.** Date, where it was played, who sat down, and who held the bank.
-The name and the room fill themselves in — *Saturday-Regular*, *Katte Room* —
-so recording a night is mostly typing numbers.
+**Games.** Open a night and it is just a date, a name and a room — and the
+name and the room fill themselves in, *Saturday-Regular* at the *Katte Room*.
+Nothing about the play is entered up front, because none of it has happened
+yet.
 
-**Chips.** *Cash-in* is what a player bought from the banker; *cash-out* is
-what they cashed back in, before any of the night's costs. Chips come from the
-banker and go back to the banker, so the two totals have to match:
+**The table, live.** Players are seated as they turn up, each with whatever
+they bought to sit down. Somebody who has never played before can be added from
+the game screen itself and gets their own login on the spot — a friend arriving
+at ten o'clock should not mean setting up an account first.
+
+**Chips.** *Cash-in* is what a player bought from the banker, and they can go
+back for more as often as they like; every trip is kept separately, with the
+time it happened. *Cash-out* is what they handed back at the end, before any of
+the night's costs, and it happens once — undo it if the number was wrong or
+they decide to play on. Chips come from the banker and go back to the banker,
+so once everybody has cashed out the two totals have to match:
 
 ```
 total cash-in  =  total cash-out
 ```
 
-The app checks that as you type and says how far out it is, rather than
-quietly recording a night that does not add up.
+Until the last person stands up the night is simply unfinished: no net, no
+winner, no dinner bill, and nothing on anyone's record. Once it is done the app
+says how far out the chips are, rather than quietly recording a night that does
+not add up.
 
 **What the night cost.** Dinner, drinks, the new decks, the cab — picked from a
-list rather than typed out, with dinner the default. **Dinner is always on
-whoever won the most**, worked out from the numbers, so there is nothing to
-choose. Correct someone's cash-out weeks later and the bill follows whoever
-that makes the top winner. Anything else is carried by whoever says they will —
-one person, or split evenly between several.
+list rather than typed out, with dinner the default. Several people order food
+over an evening, so each round is recorded against whoever paid for it, and
+they all add up to one dinner bill. **That bill is always on whoever won the
+most**, worked out from the numbers, so there is nothing to choose — and the
+game screen says what the winner owes each person who actually spent the money.
+Correct someone's cash-out weeks later and the bill follows whoever that makes
+the top winner. Anything else is carried by whoever says they will — one
+person, or split evenly between several.
 
 **Net.** A player's real result, worked out for them:
 
@@ -43,16 +58,18 @@ net  =  (cash-out - cash-in)  -  their share of the night's costs
 ```
 
 Nobody is marked as the winner by hand. Anyone who finishes ahead counts as a
-win; the single biggest result is the one who buys dinner.
+win; the single biggest result is the one who buys dinner. Somebody who
+finished behind is never the top winner, however everyone else did.
 
 **Players.** Add someone and they get their own login on the spot, with a
 one-time password you can send them. Every player sees every game, the
 leaderboard, and their own history: nights played, win rate, lifetime net, best
 and worst nights.
 
-**Admin.** One account with full control: records and edits games, adds
+**Admin.** One account with full control: opens games and runs the table, adds
 players, renames anyone, promotes other admins, resets passwords, and deletes
-anything that was entered wrong.
+anything that was entered wrong. Everyone else reads the ledger and changes
+nothing in it.
 
 ## Getting it online
 
@@ -159,7 +176,10 @@ the part covered by the most tests.
 
 The top winner is judged on the **table** result rather than the final net, and
 deliberately so: dinner lands on that player, so picking them from a number
-dinner has already changed would chase its own tail.
+dinner has already changed would chase its own tail. Only players who have
+cashed out can be judged, and only those who finished ahead — mid-way through a
+night the first person to bust out is not crowned by default, and dinner simply
+has nobody to land on yet.
 
 Note that the table is collectively *down* by whatever the night cost — that
 money went to the restaurant. Sum everyone's net for a game and you get the
@@ -171,14 +191,20 @@ costs back, negated. That is the books being right, not wrong.
 | --- | --- | --- |
 | See every game, player and payment | yes | yes |
 | Edit their own profile and password | yes | yes |
-| Record and edit games, expenses, players | no | yes |
+| Open games, seat players, record buy-ins and cash-outs | no | yes |
+| Add and remove what the night cost | no | yes |
 | Rename anyone, reset passwords, change roles | no | yes |
 | Delete games and players | no | yes |
 
 A few rules are deliberate rather than incidental:
 
 - **Dinner is always on whoever won the most**, resolved by the server from the
-  numbers rather than taken from whatever the app sends.
+  numbers rather than taken from whatever the app sends. However many people
+  bought food, it is one bill on one player.
+- **Only an admin can change a game** — every route that writes to one is
+  behind that check, and a test walks all thirteen of them to prove it.
+- **Cashing out happens once.** A second attempt is refused, as is a buy-in
+  after somebody has cashed out; undo the cash-out first.
 - **Winning is not something anyone ticks.** Finish ahead once the costs come
   off and it counts as a win; several people can win the same night, but only
   the biggest result buys dinner.
@@ -196,7 +222,7 @@ A few rules are deliberate rather than incidental:
 ## Development
 
 ```bash
-npm test           # 46 tests: the night's arithmetic and the API end to end
+npm test           # 59 tests: the night's arithmetic and the API end to end
 npm run typecheck  # both halves
 npm run server     # API with reload on save
 npm run mobile     # Expo dev server
@@ -206,8 +232,9 @@ The tests need a Postgres to talk to — `docker compose up -d` provides one, an
 they use a separate `aadarbahar_test` database so your own data is never
 touched. Point `TEST_DATABASE_URL` somewhere else if you prefer. They cover the
 night's arithmetic (balancing, rounding, what happens when it does not add up)
-and the API end to end: sign-in, roles, game CRUD, the dinner-on-the-top-winner
-rule, splitting a cost between players, history and statistics.
+and the API end to end: sign-in, roles, seating players and creating one
+mid-game, repeat buy-ins, cashing out once, the dinner-on-the-top-winner rule,
+splitting a cost between players, history and statistics.
 
 ### API
 
@@ -225,10 +252,14 @@ All routes live under `/api` and need `Authorization: Bearer <token>` except
 | `GET` | `/players/:id` | Profile, stats and history |
 | `PATCH` `DELETE` | `/players/:id` | Edit · remove (admin) |
 | `POST` | `/players/:id/reset-password` | Admin |
-| `GET` `POST` | `/games` | List · record (admin) |
+| `GET` `POST` | `/games` | List · open a night (admin) |
 | `GET` `PATCH` `DELETE` | `/games/:id` | One game |
-| `POST` `PATCH` `DELETE` | `/games/:id/players[/:seatId]` | Seats (admin) |
-| `POST` `PATCH` `DELETE` | `/games/:id/expenses[/:expenseId]` | Costs (admin) |
+| `POST` | `/games/:id/players` | Seat someone, existing or new (admin) |
+| `PATCH` `DELETE` | `/games/:id/players/:seatId` | Banker, notes · remove (admin) |
+| `POST` | `/games/:id/players/:seatId/buy-ins` | Another trip to the banker (admin) |
+| `DELETE` | `/games/:id/players/:seatId/buy-ins/:buyInId` | Correct one (admin) |
+| `POST` `DELETE` | `/games/:id/players/:seatId/cash-out` | Cash out · undo (admin) |
+| `POST` `DELETE` | `/games/:id/expenses[/:expenseId]` | Costs (admin) |
 
 ### Why PostgreSQL
 

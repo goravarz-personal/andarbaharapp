@@ -104,10 +104,14 @@ Still on your own phone, in the app:
 4. Repeat for everyone. They will each be asked to choose their own password
    the first time they sign in.
 
-Everyone can see every game and every player's record. Only admins can record
-games or change numbers. If you want someone else
-to be able to record games, open **Players** → **Manage the roster** → **Make
-admin**.
+You do not have to do this up front. On the night, **Add a player** on the
+game's own screen has a **Someone new** tab that does the same thing without
+leaving the table.
+
+Everyone can see every game and every player's record. Only admins can open a
+game, seat players, record buy-ins and cash-outs, or change any number — for
+everyone else the app is read-only. If you want someone else to be able to run
+a night, open **Players** → **Manage the roster** → **Make admin**.
 
 ---
 
@@ -131,6 +135,33 @@ it — one tap on Android, Share → *Add to Home Screen* on an iPhone.
 > exists in **Safari**. If they open the link from inside WhatsApp it may use a
 > different browser, in which case they should tap the *Open in Safari* option
 > first. The app says this too, but it helps if they hear it from you.
+
+---
+
+## Running a night
+
+The app is meant to be open on your phone while you play, not filled in
+afterwards from memory.
+
+1. **Games** → **Start a game night**. The name and the room fill themselves
+   in, so this is usually one tap and **Open the table**.
+2. As each person sits down, **Add a player** and put in what they bought from
+   the banker. Somebody who has never played before goes in under **Someone
+   new** and gets their login there and then.
+3. When somebody goes back for more chips, tap their name → **Add** under
+   *Another buy-in*. There is no limit, and each trip is kept with its time.
+4. Food arrives: **What the night cost** → **Add**, with whoever actually paid.
+   Several rounds from several people all add up to one dinner bill.
+5. As people leave, tap their name and **Cash out** with what they handed back.
+   That happens once — if the number was wrong, undo it and do it again.
+
+Until the last person has cashed out the night is simply unfinished: no net, no
+winner, and nothing on anyone's record. Once everyone is out, the app checks
+the chips add up, names whoever won the most, and says what they owe each
+person who bought food.
+
+Nobody else can change any of this. For every other player the app is
+read-only.
 
 ---
 

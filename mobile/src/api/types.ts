@@ -50,8 +50,15 @@ export interface GameTotals {
   dinner: number;
   otherExpenses: number;
   expenses: number;
-  /** buyIn - cashOut. Zero when every chip is accounted for. */
+  /** buyIn - cashOut. Only meaningful once everyone has cashed out. */
   difference: number;
+}
+
+/** One trip to the banker for chips. */
+export interface BuyIn {
+  id: string;
+  amount: number;
+  at: string;
 }
 
 export interface GamePlayerLine {
@@ -60,16 +67,21 @@ export interface GamePlayerLine {
   username: string;
   displayName: string;
   avatarColor: string | null;
-  /** Chips bought from the banker. */
+  joinedAt: string;
+  /** Every trip to the banker. */
+  buyIns: BuyIn[];
+  /** All of them added up. */
   buyIn: number;
-  /** Chips cashed back in, before the night's costs come off. */
-  cashOut: number;
+  /** What they walked away with. Null while they are still playing. */
+  cashOut: number | null;
+  cashedOutAt: string | null;
+  isPlaying: boolean;
   isBanker: boolean;
   notes: string | null;
-  tableNet: number;
+  tableNet: number | null;
   expenseShare: number;
-  /** What the night actually came to for them. */
-  net: number;
+  /** What the night came to for them. Null while still playing. */
+  net: number | null;
   isWinner: boolean;
   isTopWinner: boolean;
 }
@@ -79,8 +91,17 @@ export interface Expense {
   type: ExpenseType;
   label: string | null;
   amount: number;
+  at: string;
+  /** Who went out and spent the money. */
+  paidBy: PersonRef | null;
   /** Who is carrying it. Dinner names the top winner; others name who chipped in. */
   carriedBy: Array<{ userId: string; displayName: string }>;
+}
+
+/** What the top winner still owes whoever bought the food. */
+export interface DinnerDebt {
+  amount: number;
+  to: { userId: string; displayName: string };
 }
 
 export interface GameSummary {
@@ -91,8 +112,16 @@ export interface GameSummary {
   playerCount: number;
   totals: GameTotals;
   balanced: boolean;
+  complete: boolean;
+  playersStillIn: number;
   topWinner: { userId: string; displayName: string } | null;
-  players: Array<{ userId: string; displayName: string; avatarColor: string | null; net: number }>;
+  players: Array<{
+    userId: string;
+    displayName: string;
+    avatarColor: string | null;
+    net: number | null;
+    isPlaying: boolean;
+  }>;
 }
 
 export interface Game {
@@ -109,8 +138,16 @@ export interface Game {
   expenses: Expense[];
   totals: GameTotals;
   balanced: boolean;
+  complete: boolean;
+  playersStillIn: number;
+  dinnerDebts: DinnerDebt[];
   banker: { userId: string; displayName: string } | null;
-  topWinner: { userId: string; displayName: string; net: number; tableNet: number } | null;
+  topWinner: {
+    userId: string;
+    displayName: string;
+    net: number | null;
+    tableNet: number | null;
+  } | null;
 }
 
 export interface PlayerStats {
@@ -152,19 +189,20 @@ export interface LeaderboardRow extends PersonRef {
   stats: PlayerStats;
 }
 
-/** Shapes sent to the API when recording a game. */
-export interface GamePlayerInput {
-  userId: string;
+/** Seating someone: an existing player, or one created on the spot. */
+export interface SeatPlayerInput {
+  userId?: string;
+  newPlayer?: { username: string; displayName: string; phone?: string; email?: string };
   buyIn?: number;
-  cashOut?: number;
   isBanker?: boolean;
-  notes?: string;
 }
 
 export interface ExpenseInput {
   type: ExpenseType;
   amount: number;
   label?: string;
+  /** Who went out and spent the money. */
+  paidById?: string;
   /** Who is chipping in. Left out for dinner - that lands on the top winner. */
   shareUserIds?: string[];
 }

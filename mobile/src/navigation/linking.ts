@@ -21,6 +21,8 @@ export const linking: LinkingOptions<RootStackParamList> = {
       },
       GameDetail: 'games/:gameId',
       GameEditor: 'games/edit',
+      AddToGame: 'games/:gameId/add',
+      Seat: 'games/:gameId/seat/:seatId',
       AddExpense: 'games/:gameId/expense',
       PlayerDetail: 'players/:playerId',
       AddPlayer: 'players/new',

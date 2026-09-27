@@ -4,15 +4,19 @@ import { prisma } from '../lib/prisma';
 import { ApiError } from '../lib/errors';
 import { requireAdmin, requireAuth, currentUser } from '../middleware/auth';
 import { asyncHandler, parseOrThrow, validateBody } from '../middleware/validate';
+import { generateTempPassword, hashPassword } from '../lib/password';
+import { emptyToNull, pickAvatarColor } from '../services/user.service';
 import {
+  buyInSchema,
+  cashOutSchema,
   createGameSchema,
   expenseInputSchema,
+  seatPlayerSchema,
   updateGamePlayerSchema,
   updateGameSchema,
-  upsertGamePlayerSchema,
 } from '../types/schemas';
 import {
-  assertShareUsersAreSeated,
+  assertExpenseIsConsistent,
   clearOtherBankers,
   findGameOrThrow,
   gameInclude,
@@ -22,6 +26,8 @@ import {
 
 export const gamesRouter = Router();
 
+// Reading is open to every signed-in player. Every change below is admin only,
+// without exception - see the "only an admin can change a game" test.
 gamesRouter.use(requireAuth);
 
 type ExpenseInput = ReturnType<typeof expenseInputSchema.parse>;
@@ -60,7 +66,10 @@ gamesRouter.get(
   }),
 );
 
-/** Record a game night, optionally with everyone's numbers in one go. */
+/**
+ * Start a night. Players are seated as they turn up, so this usually creates
+ * an empty game and everything else happens on the game's own screen.
+ */
 gamesRouter.post(
   '/',
   requireAdmin,
@@ -72,7 +81,7 @@ gamesRouter.post(
       title?: string;
       location?: string;
       notes?: string;
-      players?: Array<{ userId: string; buyIn?: number; cashOut?: number; isBanker?: boolean; notes?: string }>;
+      players?: Array<{ userId: string; buyIn?: number; isBanker?: boolean; notes?: string }>;
       expenses?: ExpenseInput[];
     };
 
@@ -86,48 +95,50 @@ gamesRouter.post(
       if (found !== userIds.length) throw ApiError.badRequest('One of those players does not exist.');
     }
 
-    // One banker, whoever was listed first as holding the bank.
     const bankerId = players.find((player) => player.isBanker)?.userId ?? null;
-    const expenses = body.expenses ?? [];
+    const playedOn = new Date(body.playedOn);
 
     const game = await prisma.$transaction(async (tx) => {
       const created = await tx.game.create({
         data: {
-          playedOn: new Date(body.playedOn),
+          playedOn,
           title: body.title ?? null,
           location: body.location ?? null,
           notes: body.notes ?? null,
           createdById: me.id,
-          players: {
-            create: players.map((player) => ({
-              userId: player.userId,
-              buyIn: player.buyIn ?? 0,
-              cashOut: player.cashOut ?? 0,
-              isBanker: player.userId === bankerId,
-              notes: player.notes ?? null,
-            })),
-          },
         },
       });
 
-      for (const expense of expenses) {
-        const bearers =
-          expense.type === 'DINNER' ? [] : [...new Set(expense.shareUserIds ?? [])];
+      for (const player of players) {
+        await tx.gamePlayer.create({
+          data: {
+            gameId: created.id,
+            userId: player.userId,
+            isBanker: player.userId === bankerId,
+            notes: player.notes ?? null,
+            buyIns:
+              player.buyIn && player.buyIn > 0
+                ? { create: [{ amount: player.buyIn, at: playedOn }] }
+                : undefined,
+          },
+        });
+      }
 
-        if (expense.type !== 'DINNER') {
-          if (bearers.length === 0) throw ApiError.badRequest('Say who is covering this one.');
-          if (bearers.some((userId) => !userIds.includes(userId))) {
-            throw ApiError.badRequest('Everyone chipping in has to be a player in this game.');
-          }
-        }
-
+      for (const expense of body.expenses ?? []) {
+        assertExpenseIsConsistent(expense, userIds);
         await tx.expense.create({
           data: {
             gameId: created.id,
             type: expense.type,
             label: expense.label ?? null,
             amount: expense.amount,
-            shares: { create: bearers.map((userId) => ({ userId })) },
+            paidById: expense.paidById ?? null,
+            at: expense.at ? new Date(expense.at) : playedOn,
+            shares: {
+              create: (expense.type === 'DINNER' ? [] : (expense.shareUserIds ?? [])).map(
+                (userId) => ({ userId }),
+              ),
+            },
           },
         });
       }
@@ -172,57 +183,189 @@ gamesRouter.delete(
   asyncHandler(async (req, res) => {
     const id = String(req.params.id);
     await findGameOrThrow(id);
-    // Players and expenses cascade with the game.
+    // Seats, buy-ins and costs cascade with the game.
     await prisma.game.delete({ where: { id } });
     res.json({ deleted: true });
   }),
 );
 
-/** Seat a player, or update them if they are already at the table. */
+/**
+ * Sit somebody down, with the chips they are starting on.
+ *
+ * Takes either an existing player, or the details of one who has never played
+ * before - a friend who turns up mid-evening should not mean leaving the game
+ * screen to create an account first.
+ */
 gamesRouter.post(
   '/:id/players',
   requireAdmin,
-  validateBody(upsertGamePlayerSchema),
+  validateBody(seatPlayerSchema),
   asyncHandler(async (req, res) => {
     const gameId = String(req.params.id);
     const body = req.body as {
-      userId: string;
+      userId?: string;
+      newPlayer?: { username: string; displayName: string; email?: string; phone?: string };
       buyIn?: number;
-      cashOut?: number;
       isBanker?: boolean;
-      notes?: string;
+      at?: string;
     };
 
     await findGameOrThrow(gameId);
-    const user = await prisma.user.findUnique({ where: { id: body.userId } });
-    if (!user) throw ApiError.badRequest('No such player.');
+    const at = body.at ? new Date(body.at) : new Date();
 
-    await prisma.$transaction(async (tx) => {
-      await tx.gamePlayer.upsert({
-        where: { gameId_userId: { gameId, userId: body.userId } },
-        create: {
+    const result = await prisma.$transaction(async (tx) => {
+      let userId = body.userId ?? null;
+      let temporaryPassword: string | null = null;
+
+      if (body.newPlayer) {
+        const username = body.newPlayer.username.toLowerCase();
+        const taken = await tx.user.findUnique({ where: { username } });
+        if (taken) throw ApiError.conflict('That username is already taken.');
+
+        temporaryPassword = generateTempPassword();
+        const created = await tx.user.create({
+          data: {
+            username,
+            displayName: body.newPlayer.displayName,
+            email: emptyToNull(body.newPlayer.email) ?? null,
+            phone: emptyToNull(body.newPlayer.phone) ?? null,
+            passwordHash: await hashPassword(temporaryPassword),
+            role: 'PLAYER',
+            mustChangePassword: true,
+            avatarColor: pickAvatarColor(username),
+          },
+        });
+        userId = created.id;
+      }
+
+      if (!userId) throw ApiError.badRequest('Say who is sitting down.');
+
+      const exists = await tx.user.findUnique({ where: { id: userId } });
+      if (!exists) throw ApiError.badRequest('No such player.');
+
+      const already = await tx.gamePlayer.findUnique({
+        where: { gameId_userId: { gameId, userId } },
+      });
+      if (already) throw ApiError.conflict('They are already at this table.');
+
+      await tx.gamePlayer.create({
+        data: {
           gameId,
-          userId: body.userId,
-          buyIn: body.buyIn ?? 0,
-          cashOut: body.cashOut ?? 0,
+          userId,
+          joinedAt: at,
           isBanker: body.isBanker ?? false,
-          notes: body.notes ?? null,
-        },
-        update: {
-          buyIn: body.buyIn,
-          cashOut: body.cashOut,
-          isBanker: body.isBanker,
-          notes: body.notes,
+          buyIns: body.buyIn && body.buyIn > 0 ? { create: [{ amount: body.buyIn, at }] } : undefined,
         },
       });
-      if (body.isBanker) await clearOtherBankers(tx, gameId, body.userId);
+
+      if (body.isBanker) await clearOtherBankers(tx, gameId, userId);
+      return { temporaryPassword };
+    });
+
+    res.status(201).json({
+      game: serializeGame(await findGameOrThrow(gameId)),
+      temporaryPassword: result.temporaryPassword,
+    });
+  }),
+);
+
+/** Another trip to the banker. A player can do this as often as they like. */
+gamesRouter.post(
+  '/:id/players/:playerId/buy-ins',
+  requireAdmin,
+  validateBody(buyInSchema),
+  asyncHandler(async (req, res) => {
+    const gameId = String(req.params.id);
+    const playerId = String(req.params.playerId);
+    const body = req.body as { amount: number; at?: string };
+
+    const seat = await prisma.gamePlayer.findUnique({ where: { id: playerId } });
+    if (!seat || seat.gameId !== gameId) throw ApiError.notFound('That player is not in this game.');
+    if (seat.cashOut !== null) {
+      throw ApiError.conflict(
+        'They have already cashed out. Undo that first if they are buying back in.',
+      );
+    }
+
+    await prisma.buyIn.create({
+      data: {
+        gamePlayerId: playerId,
+        amount: body.amount,
+        at: body.at ? new Date(body.at) : new Date(),
+      },
     });
 
     res.status(201).json({ game: serializeGame(await findGameOrThrow(gameId)) });
   }),
 );
 
-/** Update one seat: buy-in, cash-out, or who won. */
+/** Correcting a buy-in that was typed in wrong. */
+gamesRouter.delete(
+  '/:id/players/:playerId/buy-ins/:buyInId',
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    const gameId = String(req.params.id);
+    const buyInId = String(req.params.buyInId);
+
+    const entry = await prisma.buyIn.findUnique({
+      where: { id: buyInId },
+      include: { gamePlayer: { select: { gameId: true } } },
+    });
+    if (!entry || entry.gamePlayer.gameId !== gameId) throw ApiError.notFound('No such buy-in.');
+
+    await prisma.buyIn.delete({ where: { id: buyInId } });
+    res.json({ game: serializeGame(await findGameOrThrow(gameId)) });
+  }),
+);
+
+/** Cashing out. Once per player, at the end of their night. */
+gamesRouter.post(
+  '/:id/players/:playerId/cash-out',
+  requireAdmin,
+  validateBody(cashOutSchema),
+  asyncHandler(async (req, res) => {
+    const gameId = String(req.params.id);
+    const playerId = String(req.params.playerId);
+    const body = req.body as { amount: number; at?: string };
+
+    const seat = await prisma.gamePlayer.findUnique({ where: { id: playerId } });
+    if (!seat || seat.gameId !== gameId) throw ApiError.notFound('That player is not in this game.');
+    if (seat.cashOut !== null) {
+      throw ApiError.conflict(
+        'They have already cashed out. Undo it first if the number was wrong.',
+      );
+    }
+
+    await prisma.gamePlayer.update({
+      where: { id: playerId },
+      data: { cashOut: body.amount, cashedOutAt: body.at ? new Date(body.at) : new Date() },
+    });
+
+    res.json({ game: serializeGame(await findGameOrThrow(gameId)) });
+  }),
+);
+
+/** Undo a cash-out - the number was wrong, or they are playing on after all. */
+gamesRouter.delete(
+  '/:id/players/:playerId/cash-out',
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    const gameId = String(req.params.id);
+    const playerId = String(req.params.playerId);
+
+    const seat = await prisma.gamePlayer.findUnique({ where: { id: playerId } });
+    if (!seat || seat.gameId !== gameId) throw ApiError.notFound('That player is not in this game.');
+
+    await prisma.gamePlayer.update({
+      where: { id: playerId },
+      data: { cashOut: null, cashedOutAt: null },
+    });
+
+    res.json({ game: serializeGame(await findGameOrThrow(gameId)) });
+  }),
+);
+
+/** Who is holding the bank, and any note against a seat. */
 gamesRouter.patch(
   '/:id/players/:playerId',
   requireAdmin,
@@ -230,7 +373,7 @@ gamesRouter.patch(
   asyncHandler(async (req, res) => {
     const gameId = String(req.params.id);
     const playerId = String(req.params.playerId);
-    const body = req.body as { buyIn?: number; cashOut?: number; isBanker?: boolean; notes?: string };
+    const body = req.body as { isBanker?: boolean; notes?: string };
 
     const seat = await prisma.gamePlayer.findUnique({ where: { id: playerId } });
     if (!seat || seat.gameId !== gameId) throw ApiError.notFound('That player is not in this game.');
@@ -254,21 +397,26 @@ gamesRouter.delete(
     const seat = await prisma.gamePlayer.findUnique({ where: { id: playerId } });
     if (!seat || seat.gameId !== gameId) throw ApiError.notFound('That player is not in this game.');
 
+    const spent = await prisma.expense.count({ where: { gameId, paidById: seat.userId } });
     const carrying = await prisma.expenseShare.count({
       where: { userId: seat.userId, expense: { gameId } },
     });
-    if (carrying > 0) {
+    if (spent > 0 || carrying > 0) {
       throw ApiError.conflict(
-        'This player is covering one of the costs for this game. Change that first.',
+        'This player is tied to one of the costs for this game. Change that first.',
       );
     }
 
+    // Their buy-ins go with the seat.
     await prisma.gamePlayer.delete({ where: { id: playerId } });
     res.json({ game: serializeGame(await findGameOrThrow(gameId)) });
   }),
 );
 
-/** Dinner or any other cost for the night. */
+/**
+ * Something the night cost. Several people buying food each get their own
+ * row; together they are the dinner bill.
+ */
 gamesRouter.post(
   '/:id/expenses',
   requireAdmin,
@@ -278,14 +426,25 @@ gamesRouter.post(
     await findGameOrThrow(gameId);
     const input = req.body as ExpenseInput;
 
-    const bearers = await assertShareUsersAreSeated(gameId, input.type, input.shareUserIds ?? []);
+    const seated = await prisma.gamePlayer.findMany({
+      where: { gameId },
+      select: { userId: true },
+    });
+    assertExpenseIsConsistent(input, seated.map((seat) => seat.userId));
+
     await prisma.expense.create({
       data: {
         gameId,
         type: input.type,
         label: input.label ?? null,
         amount: input.amount,
-        shares: { create: bearers.map((userId) => ({ userId })) },
+        paidById: input.paidById ?? null,
+        at: input.at ? new Date(input.at) : new Date(),
+        shares: {
+          create: (input.type === 'DINNER' ? [] : (input.shareUserIds ?? [])).map((userId) => ({
+            userId,
+          })),
+        },
       },
     });
 
@@ -312,11 +471,16 @@ gamesRouter.patch(
       type: existing.type,
       amount: existing.amount,
       label: existing.label ?? undefined,
+      paidById: existing.paidById ?? undefined,
       shareUserIds: currentShares.map((share) => share.userId),
       ...(req.body as Record<string, unknown>),
     });
 
-    const bearers = await assertShareUsersAreSeated(gameId, input.type, input.shareUserIds ?? []);
+    const seated = await prisma.gamePlayer.findMany({
+      where: { gameId },
+      select: { userId: true },
+    });
+    assertExpenseIsConsistent(input, seated.map((seat) => seat.userId));
 
     await prisma.$transaction(async (tx) => {
       await tx.expenseShare.deleteMany({ where: { expenseId } });
@@ -326,7 +490,12 @@ gamesRouter.patch(
           type: input.type,
           label: input.label ?? null,
           amount: input.amount,
-          shares: { create: bearers.map((userId) => ({ userId })) },
+          paidById: input.paidById ?? null,
+          shares: {
+            create: (input.type === 'DINNER' ? [] : (input.shareUserIds ?? [])).map((userId) => ({
+              userId,
+            })),
+          },
         },
       });
     });

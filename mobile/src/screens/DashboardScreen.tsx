@@ -111,10 +111,10 @@ export function DashboardScreen() {
             title="No games yet"
             message={
               isAdmin
-                ? 'Record your first game night and the ledger starts here.'
+                ? 'Start your first game night and the ledger begins here.'
                 : 'Once the admin records a game night, it shows up here.'
             }
-            action={isAdmin ? 'Record a game' : undefined}
+            action={isAdmin ? 'Start a game' : undefined}
             onAction={isAdmin ? () => navigation.navigate('GameEditor', {}) : undefined}
           />
         </Card>
@@ -140,10 +140,14 @@ export function DashboardScreen() {
                     {formatRelative(game.playedOn)} · {plural(game.playerCount, 'player')}
                   </Text>
                 </View>
-                {mine ? (
-                  <Money value={mine.net} signed size="heading" />
-                ) : (
+                {!mine ? (
                   <Badge label="Did not play" />
+                ) : !game.complete ? (
+                  <Badge label={mine.isPlaying ? 'Still in' : 'In play'} tone="felt" icon="ellipse" />
+                ) : mine.net === null ? (
+                  <Badge label="Still in" tone="felt" icon="ellipse" />
+                ) : (
+                  <Money value={mine.net} signed size="heading" />
                 )}
               </Pressable>
             );
@@ -153,7 +157,7 @@ export function DashboardScreen() {
 
       {isAdmin ? (
         <Button
-          label="Record a game night"
+          label="Start a game night"
           icon="add"
           onPress={() => navigation.navigate('GameEditor', {})}
           style={styles.cta}

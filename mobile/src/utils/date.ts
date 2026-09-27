@@ -55,3 +55,12 @@ export function shiftDays(input: string, days: number): string {
   const pad = (value: number) => String(value).padStart(2, '0');
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
+
+/** "9:42 pm" - when a buy-in or a cash-out was recorded. */
+export function formatTime(iso: string): string {
+  const date = new Date(iso);
+  const hours = date.getHours();
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  const suffix = hours >= 12 ? 'pm' : 'am';
+  return `${hours % 12 || 12}:${minutes} ${suffix}`;
+}

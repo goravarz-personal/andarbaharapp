@@ -8,17 +8,19 @@ export const gameInclude = {
   players: {
     include: {
       user: { select: { id: true, username: true, displayName: true, avatarColor: true } },
+      buyIns: { orderBy: { at: 'asc' } },
     },
-    orderBy: { id: 'asc' },
+    orderBy: { joinedAt: 'asc' },
   },
   expenses: {
     include: {
+      paidBy: { select: { id: true, username: true, displayName: true } },
       shares: {
         include: { user: { select: { id: true, displayName: true } } },
         orderBy: { id: 'asc' },
       },
     },
-    orderBy: { createdAt: 'asc' },
+    orderBy: { at: 'asc' },
   },
 } satisfies Prisma.GameInclude;
 
@@ -36,7 +38,7 @@ export function ledgerOf(game: GameWithRelations) {
       id: player.id,
       userId: player.userId,
       displayName: player.user.displayName,
-      buyIn: player.buyIn,
+      buyIns: player.buyIns.map((entry) => ({ amount: entry.amount })),
       cashOut: player.cashOut,
       isBanker: player.isBanker,
     })),
@@ -44,6 +46,7 @@ export function ledgerOf(game: GameWithRelations) {
       id: expense.id,
       type: expense.type,
       amount: expense.amount,
+      paidById: expense.paidById,
       shareUserIds: expense.shares.map((share) => share.userId),
     })),
   );
@@ -74,13 +77,21 @@ export function serializeGame(game: GameWithRelations) {
         username: player.user.username,
         displayName: player.user.displayName,
         avatarColor: player.user.avatarColor,
-        buyIn: player.buyIn,
+        joinedAt: player.joinedAt.toISOString(),
+        buyIns: player.buyIns.map((entry) => ({
+          id: entry.id,
+          amount: entry.amount,
+          at: entry.at.toISOString(),
+        })),
+        buyIn: line?.buyIn ?? 0,
         cashOut: player.cashOut,
+        cashedOutAt: player.cashedOutAt ? player.cashedOutAt.toISOString() : null,
+        isPlaying: line?.isPlaying ?? true,
         isBanker: player.isBanker,
         notes: player.notes,
-        tableNet: line?.tableNet ?? player.cashOut - player.buyIn,
+        tableNet: line?.tableNet ?? null,
         expenseShare: line?.expenseShare ?? 0,
-        net: line?.net ?? player.cashOut - player.buyIn,
+        net: line?.net ?? null,
         isWinner: line?.isWinner ?? false,
         isTopWinner: line?.isTopWinner ?? false,
       };
@@ -90,6 +101,9 @@ export function serializeGame(game: GameWithRelations) {
       type: expense.type,
       label: expense.label,
       amount: expense.amount,
+      at: expense.at.toISOString(),
+      /** Who went out and actually spent the money. */
+      paidBy: expense.paidBy,
       /** Dinner names the top winner; everything else names who chipped in. */
       carriedBy:
         expense.type === 'DINNER'
@@ -103,6 +117,16 @@ export function serializeGame(game: GameWithRelations) {
     })),
     totals: ledger.totals,
     balanced: ledger.balanced,
+    complete: ledger.complete,
+    playersStillIn: ledger.playersStillIn,
+    /** What the top winner still owes whoever bought the food. */
+    dinnerDebts: ledger.dinnerDebts.map((debt) => ({
+      amount: debt.amount,
+      to: {
+        userId: debt.toUserId,
+        displayName: nameByUser.get(debt.toUserId) ?? 'Someone',
+      },
+    })),
     banker: (() => {
       const seat = game.players.find((player) => player.isBanker);
       return seat ? { userId: seat.userId, displayName: seat.user.displayName } : null;
@@ -131,6 +155,8 @@ export function serializeGameSummary(game: GameWithRelations) {
     playerCount: game.players.length,
     totals: ledger.totals,
     balanced: ledger.balanced,
+    complete: ledger.complete,
+    playersStillIn: ledger.playersStillIn,
     topWinner: topWinner
       ? { userId: topWinner.userId, displayName: topWinner.displayName }
       : null,
@@ -140,42 +166,44 @@ export function serializeGameSummary(game: GameWithRelations) {
       avatarColor:
         game.players.find((p) => p.userId === line.userId)?.user.avatarColor ?? null,
       net: line.net,
+      isPlaying: line.isPlaying,
     })),
   };
 }
 
 /**
- * Checks the people named as carrying a cost are actually in the game.
+ * Checks a cost against the people at the table.
  *
- * Dinner names nobody: it lands on whoever won the most, which is worked out
- * when the game is read. That means dinner can be recorded before a single
- * cash-out has been typed in - but there still has to be somebody at the table
- * for it to land on.
+ * Dinner names nobody as carrying it: the whole bill lands on whoever won the
+ * most, worked out when the game is read. It does record who went out and
+ * bought the food, and several people can. Everything else names who is
+ * chipping in.
  */
-export async function assertShareUsersAreSeated(
-  gameId: string,
-  type: string,
-  shareUserIds: string[],
-): Promise<string[]> {
-  const seated = await prisma.gamePlayer.findMany({
-    where: { gameId },
-    select: { userId: true },
-  });
-  const seatedIds = new Set(seated.map((seat) => seat.userId));
+export function assertExpenseIsConsistent(
+  input: { type: string; paidById?: string; shareUserIds?: string[] },
+  seatedUserIds: string[],
+): void {
+  const seated = new Set(seatedUserIds);
 
-  if (seatedIds.size === 0) {
+  if (seated.size === 0) {
     throw ApiError.badRequest('Add players to the game before recording what it cost.');
   }
+  if (input.paidById && !seated.has(input.paidById)) {
+    throw ApiError.badRequest('Whoever spent the money has to be a player in this game.');
+  }
 
-  if (type === 'DINNER') return [];
+  if (input.type === 'DINNER') {
+    if (!input.paidById) throw ApiError.badRequest('Say who bought it.');
+    return;
+  }
 
-  if (shareUserIds.length === 0) {
+  const bearers = input.shareUserIds ?? [];
+  if (bearers.length === 0) {
     throw ApiError.badRequest('Say who is covering this one.');
   }
-  if (shareUserIds.some((userId) => !seatedIds.has(userId))) {
+  if (bearers.some((userId) => !seated.has(userId))) {
     throw ApiError.badRequest('Everyone chipping in has to be a player in this game.');
   }
-  return [...new Set(shareUserIds)];
 }
 
 /** At most one banker per game - somebody has to be holding the cash. */

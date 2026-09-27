@@ -17,6 +17,8 @@ import { GamesScreen } from '../screens/GamesScreen';
 import { GameDetailScreen } from '../screens/GameDetailScreen';
 import { GameEditorScreen } from '../screens/GameEditorScreen';
 import { AddExpenseScreen } from '../screens/AddExpenseScreen';
+import { AddToGameScreen } from '../screens/AddToGameScreen';
+import { SeatScreen } from '../screens/SeatScreen';
 import { PlayersScreen } from '../screens/PlayersScreen';
 import { PlayerDetailScreen } from '../screens/PlayerDetailScreen';
 import { AddPlayerScreen } from '../screens/AddPlayerScreen';
@@ -122,7 +124,9 @@ export function RootNavigator() {
           <>
             <Stack.Screen name="Tabs" component={MainTabs} options={{ headerShown: false }} />
             <Stack.Screen name="GameDetail" component={GameDetailScreen} options={{ title: 'Game' }} />
-            <Stack.Screen name="GameEditor" component={GameEditorScreen} options={{ title: 'Record a game' }} />
+            <Stack.Screen name="GameEditor" component={GameEditorScreen} options={{ title: 'Start a game night' }} />
+            <Stack.Screen name="AddToGame" component={AddToGameScreen} options={{ title: 'Add a player' }} />
+            <Stack.Screen name="Seat" component={SeatScreen} options={{ title: 'Player' }} />
             <Stack.Screen name="AddExpense" component={AddExpenseScreen} options={{ title: 'Add an expense' }} />
             <Stack.Screen name="PlayerDetail" component={PlayerDetailScreen} options={{ title: 'Player' }} />
             <Stack.Screen name="AddPlayer" component={AddPlayerScreen} options={{ title: 'New player' }} />

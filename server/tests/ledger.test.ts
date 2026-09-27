@@ -7,19 +7,36 @@ import {
   type LedgerPlayerInput,
 } from '../src/services/ledger.service';
 
-const player = (id: string, buyIn: number, cashOut: number, isBanker = false): LedgerPlayerInput => ({
+/** A seat with one buy-in and a cash-out. */
+const player = (
+  id: string,
+  buyIn: number,
+  cashOut: number | null,
+  isBanker = false,
+): LedgerPlayerInput => ({
   id,
   userId: id,
   displayName: id,
-  buyIn,
+  buyIns: [{ amount: buyIn }],
   cashOut,
   isBanker,
+});
+
+/** A seat that went back to the banker for more chips. */
+const rebuyer = (id: string, amounts: number[], cashOut: number | null): LedgerPlayerInput => ({
+  id,
+  userId: id,
+  displayName: id,
+  buyIns: amounts.map((amount) => ({ amount })),
+  cashOut,
+  isBanker: false,
 });
 
 const expense = (over: Partial<LedgerExpenseInput> = {}): LedgerExpenseInput => ({
   id: 'e1',
   type: 'DINNER',
   amount: 1000,
+  paidById: null,
   shareUserIds: [],
   ...over,
 });
@@ -132,7 +149,8 @@ describe('computeGameLedger', () => {
         expense({ id: 'e2', type: 'SNACKS', amount: 300, shareUserIds: ['a', 'c'] }),
       ],
     );
-    expect(sum(ledger.lines.map((line) => line.net))).toBe(-1200);
+    // Everyone has cashed out, so every net is a number.
+    expect(sum(ledger.lines.map((line) => line.net ?? Number.NaN))).toBe(-1200);
     expect(ledger.balanced).toBe(true);
   });
 
@@ -151,5 +169,122 @@ describe('computeGameLedger', () => {
     const ledger = computeGameLedger([player('a', 1000, 1000, true), player('b', 1000, 1000)], []);
     expect(ledger.lines.find((line) => line.userId === 'a')?.isBanker).toBe(true);
     expect(ledger.lines.find((line) => line.userId === 'b')?.isBanker).toBe(false);
+  });
+});
+
+describe('buying in more than once', () => {
+  it('adds every trip to the banker together', () => {
+    const ledger = computeGameLedger(
+      [rebuyer('a', [1000, 1000, 500], 900), player('b', 2500, 4100)],
+      [],
+    );
+    const a = ledger.lines.find((line) => line.userId === 'a');
+    expect(a).toMatchObject({ buyIn: 2500, buyInCount: 3, tableNet: -1600 });
+    expect(ledger.balanced).toBe(true);
+  });
+});
+
+describe('a night still being played', () => {
+  it('has no result for someone who has not cashed out', () => {
+    const ledger = computeGameLedger([player('a', 1000, 500), player('b', 1000, null)], []);
+    const b = ledger.lines.find((line) => line.userId === 'b');
+    expect(b).toMatchObject({ isPlaying: true, cashOut: null, tableNet: null, net: null });
+    expect(b?.isWinner).toBe(false);
+  });
+
+  it('is unfinished rather than unbalanced', () => {
+    const ledger = computeGameLedger([player('a', 1000, 500), player('b', 1000, null)], []);
+    expect(ledger.complete).toBe(false);
+    expect(ledger.playersStillIn).toBe(1);
+    // Not "balanced" - there is nothing to balance yet.
+    expect(ledger.balanced).toBe(false);
+  });
+
+  it('settles once the last player cashes out', () => {
+    const ledger = computeGameLedger([player('a', 1000, 500), player('b', 1000, 1500)], []);
+    expect(ledger.complete).toBe(true);
+    expect(ledger.balanced).toBe(true);
+  });
+
+  it('judges the top winner only on people who have finished', () => {
+    // b is still in and might yet win, but cannot be named until they cash out.
+    const ledger = computeGameLedger([player('a', 1000, 1600), player('b', 1000, null)], []);
+    expect(ledger.topWinnerId).toBe('a');
+  });
+
+  it('crowns nobody while the only person out is down on the night', () => {
+    // a busted and left; b and c are still holding chips. Somebody who lost
+    // has won nothing, so there is no top winner yet.
+    const ledger = computeGameLedger(
+      [player('a', 3000, 0), player('b', 2000, null), player('c', 1000, null)],
+      [],
+    );
+    expect(ledger.topWinnerId).toBe(null);
+    expect(ledger.lines.every((line) => !line.isTopWinner)).toBe(true);
+  });
+
+  it('leaves dinner unowned until somebody is actually ahead', () => {
+    const down = computeGameLedger(
+      [player('a', 3000, 0), player('b', 2000, null)],
+      [expense({ amount: 1200, paidById: 'a' })],
+    );
+    // Nobody carries it, and the person who bought it is not owed by anyone yet.
+    expect(down.lines.every((line) => line.expenseShare === 0)).toBe(true);
+    expect(down.dinnerDebts).toEqual([]);
+
+    // b cashes out ahead and the bill finds its owner.
+    const settled = computeGameLedger(
+      [player('a', 3000, 0), player('b', 2000, 5000)],
+      [expense({ amount: 1200, paidById: 'a' })],
+    );
+    expect(settled.topWinnerId).toBe('b');
+    expect(settled.lines.find((line) => line.userId === 'b')?.expenseShare).toBe(1200);
+    expect(settled.dinnerDebts).toEqual([{ toUserId: 'a', amount: 1200 }]);
+  });
+});
+
+describe('dinner bought by several people', () => {
+  it('adds the food into one bill and puts all of it on the top winner', () => {
+    const ledger = computeGameLedger(
+      [player('a', 2000, 1000), player('b', 2000, 3400), player('c', 2000, 1600)],
+      [
+        expense({ id: 'd1', amount: 400, paidById: 'a' }),
+        expense({ id: 'd2', amount: 1200, paidById: 'c' }),
+      ],
+    );
+
+    expect(ledger.totals.dinner).toBe(1600);
+    const b = ledger.lines.find((line) => line.userId === 'b');
+    expect(b).toMatchObject({ isTopWinner: true, expenseShare: 1600, net: -200 });
+    // The people who bought the food carry none of it.
+    expect(ledger.lines.find((line) => line.userId === 'a')?.expenseShare).toBe(0);
+    expect(ledger.lines.find((line) => line.userId === 'c')?.expenseShare).toBe(0);
+  });
+
+  it('says what the top winner owes each person who bought food', () => {
+    const ledger = computeGameLedger(
+      [player('a', 2000, 1000), player('b', 2000, 3400), player('c', 2000, 1600)],
+      [
+        expense({ id: 'd1', amount: 400, paidById: 'a' }),
+        expense({ id: 'd2', amount: 1200, paidById: 'c' }),
+      ],
+    );
+    expect(ledger.dinnerDebts).toEqual([
+      { toUserId: 'c', amount: 1200 },
+      { toUserId: 'a', amount: 400 },
+    ]);
+  });
+
+  it('owes nothing for food the top winner bought themselves', () => {
+    const ledger = computeGameLedger(
+      [player('a', 2000, 1000), player('b', 2000, 3000)],
+      [
+        expense({ id: 'd1', amount: 600, paidById: 'b' }),
+        expense({ id: 'd2', amount: 400, paidById: 'a' }),
+      ],
+    );
+    // b won the most and already paid 600 of the 1000 bill.
+    expect(ledger.dinnerDebts).toEqual([{ toUserId: 'a', amount: 400 }]);
+    expect(ledger.lines.find((line) => line.userId === 'b')?.expenseShare).toBe(1000);
   });
 });

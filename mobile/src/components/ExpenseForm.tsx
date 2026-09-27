@@ -32,11 +32,12 @@ const TYPE_OPTIONS: Array<SelectOption<ExpenseType>> = EXPENSE_TYPES.map((type) 
 }));
 
 /**
- * Captures one cost for the night.
+ * Captures one thing the night cost, and who went out and bought it.
  *
- * Dinner is the default and always lands on whoever won the most, so there is
- * nothing to pick. Anything else is carried by whoever says they will - one
- * person or several, split evenly between them.
+ * Dinner is the default. Several people order food over an evening, so each
+ * round is recorded against whoever paid for it - they all add up to the one
+ * dinner bill, which lands on whoever won the most. Anything else is carried by
+ * whoever says they will, split evenly between them.
  */
 export function ExpenseForm({
   players,
@@ -54,6 +55,7 @@ export function ExpenseForm({
   const [type, setType] = useState<ExpenseType>('DINNER');
   const [amount, setAmount] = useState('');
   const [label, setLabel] = useState('');
+  const [paidById, setPaidById] = useState<string | null>(null);
   const [bearers, setBearers] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
 
@@ -69,26 +71,31 @@ export function ExpenseForm({
   function submit() {
     setError(null);
     if (amountPaise <= 0) return setError('Enter how much it came to.');
-    // Dinner needs no winner named here. Whoever ends up winning the most
-    // carries it, worked out from the cash-outs whenever the game is read.
+    // Somebody has to have handed over the money for dinner - that is the whole
+    // point of recording it, since the top winner settles up with them.
+    if (isDinner && !paidById) return setError('Say who bought it.');
     if (!isDinner && bearers.length === 0) return setError('Pick who is covering this one.');
 
     onSubmit({
       type,
       amount: amountPaise,
       label: label.trim() || undefined,
+      paidById: paidById ?? undefined,
       shareUserIds: isDinner ? undefined : bearers,
     });
 
     setAmount('');
     setLabel('');
+    setPaidById(null);
     setBearers([]);
   }
 
   if (players.length === 0) {
     return (
       <Card>
-        <Text style={styles.note}>Add players to the game first — someone has to carry the cost.</Text>
+        <Text style={styles.note}>
+          Add players to the game first — somebody has to have paid for it.
+        </Text>
       </Card>
     );
   }
@@ -111,6 +118,32 @@ export function ExpenseForm({
         keyboardType="decimal-pad"
         placeholder="0"
       />
+
+      <Text style={styles.fieldLabel}>{isDinner ? 'Who bought it' : 'Who paid for it'}</Text>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipRow}>
+        {players.map((person) => {
+          const active = person.userId === paidById;
+          return (
+            <Pressable
+              key={person.userId}
+              onPress={() => setPaidById(active ? null : person.userId)}
+              accessibilityRole="button"
+              accessibilityState={{ selected: active }}
+              style={[styles.chip, active && styles.chipActive]}
+            >
+              {active ? <Ionicons name="checkmark" size={13} color={colors.white} /> : null}
+              <Text style={[styles.chipText, active && styles.chipTextActive]}>
+                {person.displayName}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+      <Text style={styles.splitHint}>
+        {isDinner
+          ? 'Whoever handed over the money. Add a row for each person who ordered food — they all add up to one dinner bill.'
+          : 'Optional. Who actually paid, if it is worth remembering.'}
+      </Text>
 
       {isDinner ? (
         <View style={styles.onWinner}>
@@ -136,11 +169,11 @@ export function ExpenseForm({
                 <Pressable
                   key={person.userId}
                   onPress={() => toggleBearer(person.userId)}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: active }}
                   style={[styles.chip, active && styles.chipActive]}
                 >
-                  {active ? (
-                    <Ionicons name="checkmark" size={13} color={colors.white} />
-                  ) : null}
+                  {active ? <Ionicons name="checkmark" size={13} color={colors.white} /> : null}
                   <Text style={[styles.chipText, active && styles.chipTextActive]}>
                     {person.displayName}
                   </Text>
