@@ -44,7 +44,7 @@ export function LoginScreen() {
       <View style={styles.hero}>
         <Image source={require('../../assets/icon.png')} style={styles.logo} />
         <Text style={styles.title}>AndarBahar</Text>
-        <Text style={styles.subtitle}>Game nights, buy-ins and who owes whom.</Text>
+        <Text style={styles.subtitle}>Game nights, chips, and who bought dinner.</Text>
       </View>
 
       <Card style={styles.card}>

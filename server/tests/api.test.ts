@@ -240,6 +240,61 @@ describe('games', () => {
     expect(ravRow.expenseShare).toBe(rs(150));
   });
 
+  it('takes dinner before anyone has a cash-out, and lands it once they do', async () => {
+    // Recording dinner as the food arrives, before the night has finished.
+    const created = await request(app)
+      .post('/api/games')
+      .set(auth(adminToken))
+      .send({
+        playedOn: new Date().toISOString(),
+        players: [{ userId: ravi.id }, { userId: meera.id }],
+      })
+      .expect(201);
+
+    const withDinner = await request(app)
+      .post(`/api/games/${created.body.game.id}/expenses`)
+      .set(auth(adminToken))
+      .send({ type: 'DINNER', amount: rs(500) })
+      .expect(201);
+    expect(withDinner.body.game.expenses).toHaveLength(1);
+
+    // Now the numbers go in, and the bill finds its owner.
+    const meeraSeat = withDinner.body.game.players.find(
+      (p: { userId: string }) => p.userId === meera.id,
+    );
+    const raviSeat = withDinner.body.game.players.find(
+      (p: { userId: string }) => p.userId === ravi.id,
+    );
+    await request(app)
+      .patch(`/api/games/${created.body.game.id}/players/${raviSeat.id}`)
+      .set(auth(adminToken))
+      .send({ buyIn: rs(1000), cashOut: rs(200) })
+      .expect(200);
+    const settled = await request(app)
+      .patch(`/api/games/${created.body.game.id}/players/${meeraSeat.id}`)
+      .set(auth(adminToken))
+      .send({ buyIn: rs(1000), cashOut: rs(1800) })
+      .expect(200);
+
+    expect(settled.body.game.topWinner.displayName).toBe('Meera');
+    expect(settled.body.game.expenses[0].carriedBy[0].displayName).toBe('Meera');
+  });
+
+  it('will not take a cost for a game with nobody at the table', async () => {
+    const empty = await request(app)
+      .post('/api/games')
+      .set(auth(adminToken))
+      .send({ playedOn: new Date().toISOString() })
+      .expect(201);
+
+    const response = await request(app)
+      .post(`/api/games/${empty.body.game.id}/expenses`)
+      .set(auth(adminToken))
+      .send({ type: 'DINNER', amount: rs(500) })
+      .expect(400);
+    expect(response.body.error.message).toMatch(/Add players/i);
+  });
+
   it('insists a non-dinner cost names who is covering it', async () => {
     const game = await createGame();
     const response = await request(app)

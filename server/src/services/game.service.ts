@@ -146,19 +146,17 @@ export function serializeGameSummary(game: GameWithRelations) {
 
 /**
  * Checks the people named as carrying a cost are actually in the game.
- * Dinner names nobody - it lands on whoever won the most.
+ *
+ * Dinner names nobody: it lands on whoever won the most, which is worked out
+ * when the game is read. That means dinner can be recorded before a single
+ * cash-out has been typed in - but there still has to be somebody at the table
+ * for it to land on.
  */
 export async function assertShareUsersAreSeated(
   gameId: string,
   type: string,
   shareUserIds: string[],
 ): Promise<string[]> {
-  if (type === 'DINNER') return [];
-
-  if (shareUserIds.length === 0) {
-    throw ApiError.badRequest('Say who is covering this one.');
-  }
-
   const seated = await prisma.gamePlayer.findMany({
     where: { gameId },
     select: { userId: true },
@@ -167,6 +165,12 @@ export async function assertShareUsersAreSeated(
 
   if (seatedIds.size === 0) {
     throw ApiError.badRequest('Add players to the game before recording what it cost.');
+  }
+
+  if (type === 'DINNER') return [];
+
+  if (shareUserIds.length === 0) {
+    throw ApiError.badRequest('Say who is covering this one.');
   }
   if (shareUserIds.some((userId) => !seatedIds.has(userId))) {
     throw ApiError.badRequest('Everyone chipping in has to be a player in this game.');

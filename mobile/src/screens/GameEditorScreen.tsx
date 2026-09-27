@@ -15,7 +15,7 @@ import {
   SectionHeader,
   TextField,
 } from '../components';
-import { ExpenseForm } from '../components/ExpenseForm';
+import { ExpenseForm, type ExpensePerson } from '../components/ExpenseForm';
 import { useAuth } from '../state/AuthContext';
 import { formatMoney, parseRupees, toRupeeInput } from '../utils/money';
 import { fromDateInput, formatDate, shiftDays, toDateInput, todayInput } from '../utils/date';
@@ -531,8 +531,10 @@ export function GameEditorScreen() {
           {showExpenseForm ? (
             <View style={styles.expenseForm}>
               <ExpenseForm
-                players={seats.map((seat) => ({
-                  ...seat,
+                players={seats.map((seat): ExpensePerson => ({
+                  userId: seat.userId,
+                  displayName: seat.displayName,
+                  avatarColor: seat.avatarColor,
                   isTopWinner: seat.userId === topWinner?.userId,
                 }))}
                 submitLabel="Add to this game"

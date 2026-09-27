@@ -69,9 +69,8 @@ export function ExpenseForm({
   function submit() {
     setError(null);
     if (amountPaise <= 0) return setError('Enter how much it came to.');
-    if (isDinner && !topWinner) {
-      return setError('Nobody has won anything yet, so there is nobody to put dinner on.');
-    }
+    // Dinner needs no winner named here. Whoever ends up winning the most
+    // carries it, worked out from the cash-outs whenever the game is read.
     if (!isDinner && bearers.length === 0) return setError('Pick who is covering this one.');
 
     onSubmit({
@@ -123,7 +122,7 @@ export function ExpenseForm({
                 most. Correct someone&apos;s cash-out and the bill follows.
               </>
             ) : (
-              'Dinner goes to whoever wins the most. Fill in the cash-outs and it sorts itself out.'
+              'Dinner goes to whoever wins the most. Add it now — once the cash-outs are in, it lands on the right person by itself.'
             )}
           </Text>
         </View>

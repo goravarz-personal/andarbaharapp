@@ -23,11 +23,13 @@ export function AddExpenseScreen() {
     try {
       const { game } = await api.game(gameId);
       setPlayers(
-        game.players.map((player) => ({
+        // The return type is spelled out on purpose: without it a mistyped
+        // field here is accepted as an extra property and silently ignored.
+        game.players.map((player): ExpensePerson => ({
           userId: player.userId,
           displayName: player.displayName,
           avatarColor: player.avatarColor,
-          isWinner: player.isWinner,
+          isTopWinner: player.isTopWinner,
         })),
       );
     } catch (caught) {

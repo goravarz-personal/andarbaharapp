@@ -1,7 +1,7 @@
 {
   "name": "AndarBahar",
   "short_name": "AndarBahar",
-  "description": "Game nights, buy-ins and who owes whom.",
+  "description": "Game nights, chips, and who bought dinner.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
