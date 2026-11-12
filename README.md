@@ -61,10 +61,31 @@ Nobody is marked as the winner by hand. Anyone who finishes ahead counts as a
 win; the single biggest result is the one who buys dinner. Somebody who
 finished behind is never the top winner, however everyone else did.
 
+**WhatsApp.** Once the last player has cashed out, the app writes the night up
+— who won, where everyone finished, what it cost, and what the top winner owes
+whoever bought the food — and hands it to WhatsApp. Pick the group, hit send.
+There is a second list for sending it to one person at a time. The same goes
+for asking who is coming to the next one: pick a date, write as many options as
+you like, and the app composes the message.
+
+It stops there on purpose. Sending a WhatsApp message *from* an app means the
+WhatsApp Business API: a verified business, a dedicated number, every message
+format approved by Meta before it can go out, and a bill per conversation — and
+the message arrives from a business number rather than from a friend. For a
+card game among mates that is the wrong trade, so the app writes the message
+and a person sends it. Nothing leaves without somebody tapping send.
+
+WhatsApp's own poll, the one with the vote bars, is made inside WhatsApp and
+nowhere else — no link or API creates one — so replies to the app's poll come
+back as messages in the group thread.
+
 **Players.** Add someone and they get their own login on the spot, with a
-one-time password you can send them. Every player sees every game, the
-leaderboard, and their own history: nights played, win rate, lifetime net, best
-and worst nights.
+one-time password you can send them. Everyone needs a mobile number on file, and
+the app asks for one the first time they sign in without it: a player with no
+number is a player who never hears how the night went. Numbers are stored the
+one way a WhatsApp link can use them, so "98765 43210" and "+91 98765 43210"
+become the same thing. Every player sees every game, the leaderboard, and their
+own history: nights played, win rate, lifetime net, best and worst nights.
 
 **Admin.** One account with full control: opens games and runs the table, adds
 players, renames anyone, promotes other admins, resets passwords, and deletes
@@ -209,6 +230,9 @@ A few rules are deliberate rather than incidental:
   off and it counts as a win; several people can win the same night, but only
   the biggest result buys dinner.
 - **One banker per game**, because somebody has to be holding the cash.
+- **Nobody uses the app without a mobile number on file.** It is the one thing
+  the night's summary cannot be sent without, so it is asked for as a wall
+  rather than a prompt.
 - **The last active admin cannot be demoted or deactivated**, so the group
   cannot lock itself out.
 - **Deleting a player who has played deactivates them instead**, so past games
@@ -222,7 +246,7 @@ A few rules are deliberate rather than incidental:
 ## Development
 
 ```bash
-npm test           # 59 tests: the night's arithmetic and the API end to end
+npm test           # 72 tests: the night's arithmetic and the API end to end
 npm run typecheck  # both halves
 npm run server     # API with reload on save
 npm run mobile     # Expo dev server
@@ -260,6 +284,10 @@ All routes live under `/api` and need `Authorization: Bearer <token>` except
 | `DELETE` | `/games/:id/players/:seatId/buy-ins/:buyInId` | Correct one (admin) |
 | `POST` `DELETE` | `/games/:id/players/:seatId/cash-out` | Cash out · undo (admin) |
 | `POST` `DELETE` | `/games/:id/expenses[/:expenseId]` | Costs (admin) |
+
+The night's summary and the poll are composed in the app rather than on the
+server, so they have no routes of their own: they are the game you already
+fetched, written out as text.
 
 ### Why PostgreSQL
 

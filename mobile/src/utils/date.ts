@@ -64,3 +64,15 @@ export function formatTime(iso: string): string {
   const suffix = hours >= 12 ? 'pm' : 'am';
   return `${hours % 12 || 12}:${minutes} ${suffix}`;
 }
+
+/**
+ * The next date that falls on this weekday (0 = Sunday), never today.
+ * Game nights are planned forward, so "Saturday" in midweek means the one
+ * coming up, and on a Saturday it means the next one.
+ */
+export function nextWeekday(weekday: number, from: string = todayInput()): string {
+  const [year, month, day] = from.split('-').map(Number);
+  const date = new Date(year ?? 1970, (month ?? 1) - 1, day ?? 1);
+  const ahead = ((weekday - date.getDay() + 7) % 7) || 7;
+  return shiftDays(from, ahead);
+}

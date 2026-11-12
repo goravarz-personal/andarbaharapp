@@ -20,6 +20,7 @@ interface AuthValue {
   apiUrl: string;
   api: ApiClient;
   isAdmin: boolean;
+  mustAddPhone: boolean;
   signIn: (username: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
   setApiUrl: (url: string) => Promise<void>;
@@ -125,6 +126,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       apiUrl,
       api,
       isAdmin: user?.role === 'ADMIN',
+      mustAddPhone: user?.mustAddPhone ?? false,
       signIn,
       signOut,
       setApiUrl,

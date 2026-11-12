@@ -108,6 +108,11 @@ You do not have to do this up front. On the night, **Add a player** on the
 game's own screen has a **Someone new** tab that does the same thing without
 leaving the table.
 
+> **Everyone needs a mobile number.** The night's summary goes out on WhatsApp,
+> so the app asks each player for their number the first time they sign in
+> without one, and will not let them past it. Fill it in when you add them and
+> they never see that screen. An Indian number can go in without the +91.
+
 Everyone can see every game and every player's record. Only admins can open a
 game, seat players, record buy-ins and cash-outs, or change any number — for
 everyone else the app is read-only. If you want someone else to be able to run
@@ -159,6 +164,18 @@ Until the last person has cashed out the night is simply unfinished: no net, no
 winner, and nothing on anyone's record. Once everyone is out, the app checks
 the chips add up, names whoever won the most, and says what they owe each
 person who bought food.
+
+6. The button at the bottom turns into **Send the summary**. Tap it, read what
+   it wrote, and **Send to the group** — WhatsApp opens with the whole thing
+   typed out, you pick the group and hit send.
+
+The app never sends anything by itself. It writes the message; you send it. The
+only way round that is a verified Meta business account with per-message
+billing, which is not worth it for a card game.
+
+To ask who is coming to the next one, **Games** → **Ask who is coming**: pick
+the date, write as many options as you want, and send it the same way. Replies
+come back in the group chat.
 
 Nobody else can change any of this. For every other player the app is
 read-only.

@@ -28,11 +28,19 @@ export function GamesScreen() {
       refreshing={refreshing}
       footer={
         isAdmin ? (
-          <Button
-            label="Start a game night"
-            icon="add"
-            onPress={() => navigation.navigate('GameEditor', {})}
-          />
+          <View style={styles.actions}>
+            <Button
+              label="Ask who is coming"
+              icon="logo-whatsapp"
+              variant="secondary"
+              onPress={() => navigation.navigate('Poll')}
+            />
+            <Button
+              label="Start a game night"
+              icon="add"
+              onPress={() => navigation.navigate('GameEditor', {})}
+            />
+          </View>
         ) : undefined
       }
     >
@@ -140,6 +148,7 @@ function Stat({ label, value }: { label: string; value: string }) {
 
 const styles = StyleSheet.create({
   list: { marginTop: spacing(4), gap: spacing(3) },
+  actions: { gap: spacing(2.5) },
   pressed: { opacity: 0.7 },
   gameCard: { gap: spacing(3) },
   gameHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing(2) },

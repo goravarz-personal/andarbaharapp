@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { normalizePhone } from '../lib/phone';
 import { ExpenseTypeSchema, RoleSchema } from './enums';
 
 /** Money arrives from clients as whole minor units (paise). */
@@ -11,6 +12,31 @@ const money = z
 const isoDate = z
   .string()
   .refine((value) => !Number.isNaN(Date.parse(value)), 'Expected an ISO date string.');
+
+/**
+ * A phone number, stored as E.164 so a wa.me link can use it.
+ *
+ * The transform is the point: whatever shape it was typed in, what reaches the
+ * database is "+919876543210". An empty string still means "clear it", so the
+ * one way to fail here is to type something that is not a phone number.
+ */
+const PHONE_MESSAGE = 'Enter a mobile number with its country code, like +91 98765 43210.';
+
+const phone = z
+  .string()
+  .trim()
+  // Generous, and carrying the same message: a length complaint about a field
+  // this shape is never the thing that helps somebody fix it.
+  .max(40, PHONE_MESSAGE)
+  .transform((value, ctx) => {
+    if (value === '') return '';
+    const normalized = normalizePhone(value);
+    if (!normalized) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: PHONE_MESSAGE });
+      return z.NEVER;
+    }
+    return normalized;
+  });
 
 export const loginSchema = z.object({
   username: z.string().trim().min(1, 'Username is required.'),
@@ -31,7 +57,7 @@ export const createPlayerSchema = z.object({
     .regex(/^[a-zA-Z0-9._-]+$/, 'Use letters, numbers, dots, underscores or dashes only.'),
   displayName: z.string().trim().min(1, 'Name is required.').max(60),
   email: z.string().trim().email('Enter a valid email.').optional().or(z.literal('')),
-  phone: z.string().trim().max(20).optional().or(z.literal('')),
+  phone: phone.optional(),
   password: z.string().min(6, 'Password must be at least 6 characters.').optional(),
   role: RoleSchema.optional(),
   avatarColor: z.string().trim().max(20).optional(),
@@ -40,7 +66,7 @@ export const createPlayerSchema = z.object({
 export const updatePlayerSchema = z.object({
   displayName: z.string().trim().min(1).max(60).optional(),
   email: z.string().trim().email('Enter a valid email.').optional().or(z.literal('')),
-  phone: z.string().trim().max(20).optional().or(z.literal('')),
+  phone: phone.optional(),
   role: RoleSchema.optional(),
   isActive: z.boolean().optional(),
   avatarColor: z.string().trim().max(20).optional(),
@@ -131,6 +157,6 @@ export const updateGamePlayerSchema = z.object({
 export const updateMeSchema = z.object({
   displayName: z.string().trim().min(1).max(60).optional(),
   email: z.string().trim().email('Enter a valid email.').optional().or(z.literal('')),
-  phone: z.string().trim().max(20).optional().or(z.literal('')),
+  phone: phone.optional(),
   avatarColor: z.string().trim().max(20).optional(),
 });

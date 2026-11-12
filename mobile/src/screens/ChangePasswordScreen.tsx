@@ -7,12 +7,14 @@ import { useAuth } from '../state/AuthContext';
 import { ApiError } from '../api/client';
 import { colors, font, spacing } from '../theme';
 import type { RootStackParamList } from '../navigation/types';
+import { useLeaveGate } from '../navigation/useLeaveGate';
 
 export function ChangePasswordScreen() {
   const route = useRoute<RouteProp<RootStackParamList, 'ChangePassword'>>();
   const navigation = useNavigation();
-  const { api, applyNewToken, signOut } = useAuth();
+  const { api, user, applyNewToken, signOut } = useAuth();
   const forced = route.params?.forced ?? false;
+  useLeaveGate(forced, user?.mustChangePassword ?? false);
 
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');

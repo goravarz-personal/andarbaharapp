@@ -13,6 +13,12 @@ export type RootStackParamList = {
   AddPlayer: undefined;
   AddExpense: { gameId: string };
   ChangePassword: { forced?: boolean } | undefined;
+  /** Collecting the number the night's summary gets sent to. */
+  AddPhone: { forced?: boolean } | undefined;
+  /** The finished night, ready to send out on WhatsApp. */
+  ShareNight: { gameId: string };
+  /** Asking the group who is coming to the next one. */
+  Poll: undefined;
   ServerSettings: undefined;
   ManageRoster: undefined;
 };

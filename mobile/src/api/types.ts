@@ -33,6 +33,8 @@ export interface Player {
   role: Role;
   isActive: boolean;
   mustChangePassword: boolean;
+  /** No number on file. The app asks for one before letting them in. */
+  mustAddPhone: boolean;
   avatarColor: string | null;
   createdAt: string;
 }

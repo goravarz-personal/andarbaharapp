@@ -110,13 +110,19 @@ export function GameDetailScreen() {
       onRefresh={refetch}
       refreshing={refreshing}
       footer={
-        isAdmin ? (
+        !isAdmin ? undefined : game.complete && game.players.length > 0 ? (
+          <Button
+            label="Send the summary"
+            icon="logo-whatsapp"
+            onPress={() => navigation.navigate('ShareNight', { gameId: game.id })}
+          />
+        ) : (
           <Button
             label="Add a player"
             icon="person-add-outline"
             onPress={() => navigation.navigate('AddToGame', { gameId: game.id })}
           />
-        ) : undefined
+        )
       }
     >
       <Card style={styles.header}>

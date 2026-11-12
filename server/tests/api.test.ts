@@ -76,6 +76,71 @@ describe('auth', () => {
   });
 });
 
+describe('a number to send the night to', () => {
+  it('says a player has no number yet, and stops saying it once they do', async () => {
+    const before = await request(app).get('/api/auth/me').set(auth(playerToken)).expect(200);
+    expect(before.body.user.mustAddPhone).toBe(true);
+
+    const after = await request(app)
+      .patch('/api/auth/me')
+      .set(auth(playerToken))
+      .send({ phone: '98765 43210' })
+      .expect(200);
+    expect(after.body.user.mustAddPhone).toBe(false);
+  });
+
+  it('stores whatever shape it was typed in as one number WhatsApp can use', async () => {
+    for (const typed of ['+91 98765 43210', '0091-98765-43210', '98765 43210']) {
+      const response = await request(app)
+        .patch('/api/auth/me')
+        .set(auth(playerToken))
+        .send({ phone: typed })
+        .expect(200);
+      expect(response.body.user.phone, typed).toBe('+919876543210');
+    }
+  });
+
+  it('turns away something that is not a phone number', async () => {
+    const response = await request(app)
+      .patch('/api/auth/me')
+      .set(auth(playerToken))
+      .send({ phone: 'ring me at the usual place' })
+      .expect(400);
+    // The message has to say how to fix it, not how long the field is.
+    expect(response.body.error.details.phone).toContain('country code');
+
+    // And the account is left as it was, rather than half-updated.
+    const me = await request(app).get('/api/auth/me').set(auth(playerToken)).expect(200);
+    expect(me.body.user.phone).toBeNull();
+  });
+
+  it('normalises a number an admin types for somebody else too', async () => {
+    const created = await request(app)
+      .post('/api/players')
+      .set(auth(adminToken))
+      .send({ username: 'arjun', displayName: 'Arjun', phone: '8765432109' })
+      .expect(201);
+    expect(created.body.player.phone).toBe('+918765432109');
+    expect(created.body.player.mustAddPhone).toBe(false);
+  });
+
+  it('lets a number be cleared, which puts them back behind the prompt', async () => {
+    await request(app)
+      .patch('/api/auth/me')
+      .set(auth(playerToken))
+      .send({ phone: '98765 43210' })
+      .expect(200);
+
+    const cleared = await request(app)
+      .patch('/api/auth/me')
+      .set(auth(playerToken))
+      .send({ phone: '' })
+      .expect(200);
+    expect(cleared.body.user.phone).toBeNull();
+    expect(cleared.body.user.mustAddPhone).toBe(true);
+  });
+});
+
 describe('players', () => {
   it('lets an admin add a player and returns a one-time password', async () => {
     const response = await request(app)

@@ -24,6 +24,9 @@ import { PlayerDetailScreen } from '../screens/PlayerDetailScreen';
 import { AddPlayerScreen } from '../screens/AddPlayerScreen';
 import { ProfileScreen } from '../screens/ProfileScreen';
 import { ChangePasswordScreen } from '../screens/ChangePasswordScreen';
+import { AddPhoneScreen } from '../screens/AddPhoneScreen';
+import { ShareNightScreen } from '../screens/ShareNightScreen';
+import { PollScreen } from '../screens/PollScreen';
 import { ManageRosterScreen } from '../screens/ManageRosterScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -79,7 +82,7 @@ function MainTabs() {
 }
 
 export function RootNavigator() {
-  const { status, user } = useAuth();
+  const { status, user, mustAddPhone } = useAuth();
 
   if (status === 'loading') {
     return (
@@ -91,6 +94,9 @@ export function RootNavigator() {
 
   // Someone signed in with a password an admin handed them has one job first.
   const mustChangePassword = status === 'signedIn' && user?.mustChangePassword;
+  // Then a number to send the night's results to. Both are walls rather than
+  // prompts: there is nothing else in the app until they are done.
+  const needsPhone = status === 'signedIn' && !mustChangePassword && mustAddPhone;
 
   return (
     <NavigationContainer theme={navTheme} linking={linking}>
@@ -120,6 +126,13 @@ export function RootNavigator() {
             initialParams={{ forced: true }}
             options={{ title: 'Set your password', headerBackVisible: false }}
           />
+        ) : needsPhone ? (
+          <Stack.Screen
+            name="AddPhone"
+            component={AddPhoneScreen}
+            initialParams={{ forced: true }}
+            options={{ title: 'Your mobile number', headerBackVisible: false }}
+          />
         ) : (
           <>
             <Stack.Screen name="Tabs" component={MainTabs} options={{ headerShown: false }} />
@@ -132,6 +145,9 @@ export function RootNavigator() {
             <Stack.Screen name="AddPlayer" component={AddPlayerScreen} options={{ title: 'New player' }} />
             <Stack.Screen name="ManageRoster" component={ManageRosterScreen} options={{ title: 'Roster' }} />
             <Stack.Screen name="ChangePassword" component={ChangePasswordScreen} options={{ title: 'Change password' }} />
+            <Stack.Screen name="AddPhone" component={AddPhoneScreen} options={{ title: 'Your mobile number' }} />
+            <Stack.Screen name="ShareNight" component={ShareNightScreen} options={{ title: 'Send the summary' }} />
+            <Stack.Screen name="Poll" component={PollScreen} options={{ title: 'Who is coming?' }} />
             <Stack.Screen name="ServerSettings" component={ServerSettingsScreen} options={{ title: 'Server' }} />
           </>
         )}

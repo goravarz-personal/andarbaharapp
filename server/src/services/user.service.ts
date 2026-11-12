@@ -11,6 +11,12 @@ export function serializeUser(user: User) {
     role: user.role,
     isActive: user.isActive,
     mustChangePassword: user.mustChangePassword,
+    /**
+     * Derived rather than stored: the app needs a number it can send a game
+     * summary to, and the only thing that settles that is whether there is
+     * one. A column would be a second answer to the same question.
+     */
+    mustAddPhone: user.phone === null || user.phone.trim() === '',
     avatarColor: user.avatarColor,
     createdAt: user.createdAt.toISOString(),
   };

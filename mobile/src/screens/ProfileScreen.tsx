@@ -19,6 +19,7 @@ import {
 import { InstallCard } from '../components/InstallCard';
 import { useApiQuery } from '../state/useApiQuery';
 import { useAuth } from '../state/AuthContext';
+import { displayPhone } from '../utils/phone';
 import { colors, font, spacing } from '../theme';
 import type { RootStackParamList } from '../navigation/types';
 import { confirm, notify } from '../utils/dialog';
@@ -141,6 +142,12 @@ export function ProfileScreen() {
           subtitle="Pick a new one"
           left={<Ionicons name="key-outline" size={18} color={colors.feltSoft} />}
           onPress={() => navigation.navigate('ChangePassword')}
+        />
+        <Row
+          title="Mobile number"
+          subtitle={displayPhone(user?.phone ?? null) || 'Where the night\u2019s results go'}
+          left={<Ionicons name="logo-whatsapp" size={18} color={colors.feltSoft} />}
+          onPress={() => navigation.navigate('AddPhone')}
         />
         <Row
           title="Server"
