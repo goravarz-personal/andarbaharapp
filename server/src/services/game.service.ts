@@ -32,6 +32,31 @@ export async function findGameOrThrow(gameId: string): Promise<GameWithRelations
   return game;
 }
 
+/**
+ * Refuses to change a night the admin has called over.
+ *
+ * Ending is the admin saying the numbers are final, so everything that would
+ * move them is closed off until they say otherwise. Reopening is one tap, and
+ * is the honest way to correct something: the ledger is still worked out from
+ * the chips every time it is read, so a corrected cash-out moves every number
+ * that depends on it, dinner included.
+ */
+export function assertNotEnded(game: { endedAt: Date | null }): void {
+  if (game.endedAt) {
+    throw ApiError.conflict('This night has been ended. Reopen it first to change anything.');
+  }
+}
+
+/** Loads a game and refuses if it has been ended. */
+export async function assertGameOpen(gameId: string): Promise<void> {
+  const game = await prisma.game.findUnique({
+    where: { id: gameId },
+    select: { id: true, endedAt: true },
+  });
+  if (!game) throw ApiError.notFound('That game no longer exists.');
+  assertNotEnded(game);
+}
+
 export function ledgerOf(game: GameWithRelations) {
   return computeGameLedger(
     game.players.map((player) => ({
@@ -118,6 +143,8 @@ export function serializeGame(game: GameWithRelations) {
     totals: ledger.totals,
     balanced: ledger.balanced,
     complete: ledger.complete,
+    /** When the admin called it a night. Null while it is still open. */
+    endedAt: game.endedAt ? game.endedAt.toISOString() : null,
     playersStillIn: ledger.playersStillIn,
     /** What the top winner still owes whoever bought the food. */
     dinnerDebts: ledger.dinnerDebts.map((debt) => ({
@@ -156,6 +183,7 @@ export function serializeGameSummary(game: GameWithRelations) {
     totals: ledger.totals,
     balanced: ledger.balanced,
     complete: ledger.complete,
+    endedAt: game.endedAt ? game.endedAt.toISOString() : null,
     playersStillIn: ledger.playersStillIn,
     topWinner: topWinner
       ? { userId: topWinner.userId, displayName: topWinner.displayName }

@@ -44,6 +44,8 @@ export function SeatScreen() {
 
   const game = data?.game;
   const seat = game?.players.find((player) => player.id === seatId) ?? null;
+  const ended = game?.endedAt != null;
+  const canEdit = isAdmin && !ended;
 
   const [buyInAmount, setBuyInAmount] = useState('');
   const [cashOutAmount, setCashOutAmount] = useState('');
@@ -169,7 +171,7 @@ export function SeatScreen() {
                 <Text style={styles.buyInAmount}>{formatMoney(entry.amount)}</Text>
                 <Text style={styles.buyInTime}>{formatTime(entry.at)}</Text>
               </View>
-              {isAdmin ? (
+              {canEdit ? (
                 <Pressable
                   hitSlop={10}
                   accessibilityRole="button"
@@ -200,7 +202,7 @@ export function SeatScreen() {
         </Card>
       )}
 
-      {isAdmin && seat.isPlaying ? (
+      {canEdit && seat.isPlaying ? (
         <>
           <SectionHeader title="Another buy-in" />
           <Card>
@@ -259,6 +261,7 @@ export function SeatScreen() {
               {seat.cashedOutAt ? ` at ${formatTime(seat.cashedOutAt)}` : ''}.
             </Text>
           </View>
+          {canEdit ? (
           <Button
             label="Undo the cash-out"
             variant="secondary"
@@ -274,12 +277,13 @@ export function SeatScreen() {
               })
             }
           />
+          ) : null}
         </Card>
       ) : null}
 
       {actionError ? <Text style={styles.error}>{actionError}</Text> : null}
 
-      {isAdmin ? (
+      {canEdit ? (
         <>
           <SectionHeader title="This seat" />
           <Card>

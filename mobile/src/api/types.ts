@@ -115,6 +115,8 @@ export interface GameSummary {
   totals: GameTotals;
   balanced: boolean;
   complete: boolean;
+  /** When the admin called it a night. Null while it is still open. */
+  endedAt: string | null;
   playersStillIn: number;
   topWinner: { userId: string; displayName: string } | null;
   players: Array<{
@@ -141,6 +143,8 @@ export interface Game {
   totals: GameTotals;
   balanced: boolean;
   complete: boolean;
+  /** When the admin called it a night. Null while it is still open. */
+  endedAt: string | null;
   playersStillIn: number;
   dinnerDebts: DinnerDebt[];
   banker: { userId: string; displayName: string } | null;

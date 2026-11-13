@@ -37,9 +37,16 @@ total cash-in  =  total cash-out
 ```
 
 Until the last person stands up the night is simply unfinished: no net, no
-winner, no dinner bill, and nothing on anyone's record. Once it is done the app
-says how far out the chips are, rather than quietly recording a night that does
-not add up.
+winner, no dinner bill, and nothing on anyone's record.
+
+**Ending it is the admin's call.** Everybody having cashed out is what *allows*
+a night to be ended, not what ends it — a table somebody is still sitting at
+has no result to close. Ending freezes the night: no more buy-ins, cash-outs or
+costs, which is what makes the summary worth sending. Reopening is one tap, and
+is the honest way to fix a wrong number, because the ledger is worked out from
+the chips every time it is read. If the chips do not add up, the app says so
+before you end it — a warning, not a bar, since somebody has to be able to
+close a night they cannot reconcile.
 
 **What the night cost.** Dinner, drinks, the new decks, the cab — picked from a
 list rather than typed out, with dinner the default. Several people order food
@@ -230,6 +237,8 @@ A few rules are deliberate rather than incidental:
   off and it counts as a win; several people can win the same night, but only
   the biggest result buys dinner.
 - **One banker per game**, because somebody has to be holding the cash.
+- **Only an admin ends a night, and only once everyone has cashed out.** An
+  ended night refuses every change until it is reopened.
 - **Nobody uses the app without a mobile number on file.** It is the one thing
   the night's summary cannot be sent without, so it is asked for as a wall
   rather than a prompt.
@@ -246,7 +255,7 @@ A few rules are deliberate rather than incidental:
 ## Development
 
 ```bash
-npm test           # 72 tests: the night's arithmetic and the API end to end
+npm test           # 78 tests: the night's arithmetic and the API end to end
 npm run typecheck  # both halves
 npm run server     # API with reload on save
 npm run mobile     # Expo dev server
@@ -278,6 +287,8 @@ All routes live under `/api` and need `Authorization: Bearer <token>` except
 | `POST` | `/players/:id/reset-password` | Admin |
 | `GET` `POST` | `/games` | List · open a night (admin) |
 | `GET` `PATCH` `DELETE` | `/games/:id` | One game |
+| `POST` | `/games/:id/end` | Call it a night (admin) |
+| `POST` | `/games/:id/reopen` | Open it back up (admin) |
 | `POST` | `/games/:id/players` | Seat someone, existing or new (admin) |
 | `PATCH` `DELETE` | `/games/:id/players/:seatId` | Banker, notes · remove (admin) |
 | `POST` | `/games/:id/players/:seatId/buy-ins` | Another trip to the banker (admin) |

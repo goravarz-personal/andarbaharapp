@@ -58,6 +58,7 @@ export function GameDetailScreen() {
   );
 
   const game = data?.game;
+  const [busy, setBusy] = React.useState(false);
 
   React.useEffect(() => {
     if (game) navigation.setOptions({ title: game.title ?? formatDate(game.playedOn) });
@@ -82,6 +83,54 @@ export function GameDetailScreen() {
     });
   }
 
+  function confirmEnd() {
+    if (!game) return;
+    // Ending is the moment the numbers are declared final, so it is the last
+    // useful moment to point out that they do not add up. A warning, not a
+    // block: somebody has to be able to close a night they cannot reconcile.
+    const outBy = Math.abs(game.totals.difference);
+    confirm({
+      title: 'End this night?',
+      message:
+        (outBy > 0
+          ? `The chips are out by ${formatMoney(outBy)}, so a cash-out is probably wrong. `
+          : '') +
+        'The numbers are final once it is over - no more buy-ins, cash-outs or costs. You can reopen it if something needs fixing.',
+      cancelLabel: 'Not yet',
+      confirmLabel: outBy > 0 ? 'End it anyway' : 'End the night',
+      onConfirm: async () => {
+        setBusy(true);
+        try {
+          setData(await api.endGame(game.id));
+        } catch (caught) {
+          notify('Could not end it', caught instanceof Error ? caught.message : 'Please try again.');
+        } finally {
+          setBusy(false);
+        }
+      },
+    });
+  }
+
+  function confirmReopen() {
+    if (!game) return;
+    confirm({
+      title: 'Reopen this night?',
+      message: 'It goes back to being editable, so a wrong number can be corrected.',
+      cancelLabel: 'Leave it',
+      confirmLabel: 'Reopen',
+      onConfirm: async () => {
+        setBusy(true);
+        try {
+          setData(await api.reopenGame(game.id));
+        } catch (caught) {
+          notify('Could not reopen it', caught instanceof Error ? caught.message : 'Please try again.');
+        } finally {
+          setBusy(false);
+        }
+      },
+    });
+  }
+
   async function removeExpense(expenseId: string) {
     if (!game) return;
     try {
@@ -101,6 +150,11 @@ export function GameDetailScreen() {
   }
   if (!game) return null;
 
+  const ended = game.endedAt !== null;
+  const canEdit = isAdmin && !ended;
+  // Everyone cashed out is what ALLOWS the night to be ended, not what ends it.
+  const readyToEnd = game.complete && game.players.length > 0;
+
   // Whoever is still playing sits at the top - they are the ones with something
   // left to record. Everyone else is ranked by how the night went for them.
   const ranked = [...game.players].sort(rankPlayers);
@@ -110,13 +164,13 @@ export function GameDetailScreen() {
       onRefresh={refetch}
       refreshing={refreshing}
       footer={
-        // Both, always. Hiding the summary until the night was finished meant
-        // an admin looking at a table still in play saw no WhatsApp button at
-        // all and nothing saying why. The order follows what the night needs
-        // next; the share screen says who is holding it up.
+        // What the night needs next, as the primary action. The summary is
+        // always reachable: hiding it on an unfinished night made the whole
+        // feature look missing. Seating somebody stays on the "At the table"
+        // header, so the footer never needs a third button.
         isAdmin ? (
           <View style={styles.actions}>
-            {game.complete && game.players.length > 0 ? (
+            {ended ? (
               <>
                 <Button
                   label="Send the summary"
@@ -124,10 +178,26 @@ export function GameDetailScreen() {
                   onPress={() => navigation.navigate('ShareNight', { gameId: game.id })}
                 />
                 <Button
-                  label="Add a player"
-                  icon="person-add-outline"
+                  label="Reopen the night"
+                  icon="lock-open-outline"
                   variant="secondary"
-                  onPress={() => navigation.navigate('AddToGame', { gameId: game.id })}
+                  loading={busy}
+                  onPress={confirmReopen}
+                />
+              </>
+            ) : readyToEnd ? (
+              <>
+                <Button
+                  label="End the night"
+                  icon="flag-outline"
+                  loading={busy}
+                  onPress={confirmEnd}
+                />
+                <Button
+                  label="Send the summary"
+                  icon="logo-whatsapp"
+                  variant="secondary"
+                  onPress={() => navigation.navigate('ShareNight', { gameId: game.id })}
                 />
               </>
             ) : (
@@ -189,6 +259,9 @@ export function GameDetailScreen() {
             )}
           </View>
           {game.banker ? <MathRow label="Banker" value={game.banker.displayName} /> : null}
+          {ended && game.endedAt ? (
+            <MathRow label="Called a night at" value={formatTime(game.endedAt)} />
+          ) : null}
         </View>
 
         {game.complete && !game.balanced ? (
@@ -207,8 +280,8 @@ export function GameDetailScreen() {
 
       <SectionHeader
         title={`At the table (${game.playerCount})`}
-        action={isAdmin ? 'Add' : undefined}
-        onAction={isAdmin ? () => navigation.navigate('AddToGame', { gameId: game.id }) : undefined}
+        action={canEdit ? 'Add' : undefined}
+        onAction={canEdit ? () => navigation.navigate('AddToGame', { gameId: game.id }) : undefined}
       />
       {game.players.length === 0 ? (
         <Card>
@@ -281,8 +354,8 @@ export function GameDetailScreen() {
 
       <SectionHeader
         title="What the night cost"
-        action={isAdmin ? 'Add' : undefined}
-        onAction={isAdmin ? () => navigation.navigate('AddExpense', { gameId: game.id }) : undefined}
+        action={canEdit ? 'Add' : undefined}
+        onAction={canEdit ? () => navigation.navigate('AddExpense', { gameId: game.id }) : undefined}
       />
       {game.expenses.length === 0 ? (
         <Card>
@@ -319,7 +392,7 @@ export function GameDetailScreen() {
                 </Text>
               </View>
               <Text style={styles.expenseAmount}>{formatMoney(expense.amount)}</Text>
-              {isAdmin ? (
+              {canEdit ? (
                 <Pressable
                   onPress={() => removeExpense(expense.id)}
                   hitSlop={10}
@@ -369,13 +442,15 @@ export function GameDetailScreen() {
 
       {isAdmin ? (
         <>
-          <Button
-            label="Edit the night's details"
-            icon="create-outline"
-            variant="secondary"
-            style={styles.editButton}
-            onPress={() => navigation.navigate('GameEditor', { gameId: game.id })}
-          />
+          {canEdit ? (
+            <Button
+              label="Edit the night's details"
+              icon="create-outline"
+              variant="secondary"
+              style={styles.editButton}
+              onPress={() => navigation.navigate('GameEditor', { gameId: game.id })}
+            />
+          ) : null}
           <Button
             label="Delete this game"
             variant="danger"

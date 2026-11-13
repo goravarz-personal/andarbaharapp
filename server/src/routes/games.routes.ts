@@ -17,9 +17,12 @@ import {
 } from '../types/schemas';
 import {
   assertExpenseIsConsistent,
+  assertGameOpen,
+  assertNotEnded,
   clearOtherBankers,
   findGameOrThrow,
   gameInclude,
+  ledgerOf,
   serializeGame,
   serializeGameSummary,
 } from '../services/game.service';
@@ -162,7 +165,7 @@ gamesRouter.patch(
       notes?: string;
     };
 
-    await findGameOrThrow(id);
+    assertNotEnded(await findGameOrThrow(id));
     await prisma.game.update({
       where: { id },
       data: {
@@ -190,6 +193,54 @@ gamesRouter.delete(
 );
 
 /**
+ * Calling it a night.
+ *
+ * Everybody having cashed out is the precondition, not the act: a table with
+ * somebody still sitting at it has no result to close. Once ended, nothing
+ * about the night can change until it is reopened, which is what makes the
+ * summary worth sending.
+ */
+gamesRouter.post(
+  '/:id/end',
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    const id = String(req.params.id);
+    const game = await findGameOrThrow(id);
+    if (game.endedAt) throw ApiError.conflict('This night has already been ended.');
+
+    const ledger = ledgerOf(game);
+    if (game.players.length === 0) {
+      throw ApiError.badRequest('Nobody played this night, so there is nothing to end.');
+    }
+    if (ledger.playersStillIn > 0) {
+      const names = game.players
+        .filter((player) => player.cashOut === null)
+        .map((player) => player.user.displayName);
+      throw ApiError.conflict(
+        `${names.join(' and ')} ${names.length === 1 ? 'has' : 'have'} not cashed out yet.`,
+      );
+    }
+
+    await prisma.game.update({ where: { id }, data: { endedAt: new Date() } });
+    res.json({ game: serializeGame(await findGameOrThrow(id)) });
+  }),
+);
+
+/** Reopening it, because a number was wrong or somebody is playing on. */
+gamesRouter.post(
+  '/:id/reopen',
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    const id = String(req.params.id);
+    const game = await findGameOrThrow(id);
+    if (!game.endedAt) throw ApiError.conflict('This night is already open.');
+
+    await prisma.game.update({ where: { id }, data: { endedAt: null } });
+    res.json({ game: serializeGame(await findGameOrThrow(id)) });
+  }),
+);
+
+/**
  * Sit somebody down, with the chips they are starting on.
  *
  * Takes either an existing player, or the details of one who has never played
@@ -202,6 +253,7 @@ gamesRouter.post(
   validateBody(seatPlayerSchema),
   asyncHandler(async (req, res) => {
     const gameId = String(req.params.id);
+    await assertGameOpen(gameId);
     const body = req.body as {
       userId?: string;
       newPlayer?: { username: string; displayName: string; email?: string; phone?: string };
@@ -276,6 +328,7 @@ gamesRouter.post(
   validateBody(buyInSchema),
   asyncHandler(async (req, res) => {
     const gameId = String(req.params.id);
+    await assertGameOpen(gameId);
     const playerId = String(req.params.playerId);
     const body = req.body as { amount: number; at?: string };
 
@@ -305,6 +358,7 @@ gamesRouter.delete(
   requireAdmin,
   asyncHandler(async (req, res) => {
     const gameId = String(req.params.id);
+    await assertGameOpen(gameId);
     const buyInId = String(req.params.buyInId);
 
     const entry = await prisma.buyIn.findUnique({
@@ -325,6 +379,7 @@ gamesRouter.post(
   validateBody(cashOutSchema),
   asyncHandler(async (req, res) => {
     const gameId = String(req.params.id);
+    await assertGameOpen(gameId);
     const playerId = String(req.params.playerId);
     const body = req.body as { amount: number; at?: string };
 
@@ -351,6 +406,7 @@ gamesRouter.delete(
   requireAdmin,
   asyncHandler(async (req, res) => {
     const gameId = String(req.params.id);
+    await assertGameOpen(gameId);
     const playerId = String(req.params.playerId);
 
     const seat = await prisma.gamePlayer.findUnique({ where: { id: playerId } });
@@ -372,6 +428,7 @@ gamesRouter.patch(
   validateBody(updateGamePlayerSchema),
   asyncHandler(async (req, res) => {
     const gameId = String(req.params.id);
+    await assertGameOpen(gameId);
     const playerId = String(req.params.playerId);
     const body = req.body as { isBanker?: boolean; notes?: string };
 
@@ -392,6 +449,7 @@ gamesRouter.delete(
   requireAdmin,
   asyncHandler(async (req, res) => {
     const gameId = String(req.params.id);
+    await assertGameOpen(gameId);
     const playerId = String(req.params.playerId);
 
     const seat = await prisma.gamePlayer.findUnique({ where: { id: playerId } });
@@ -423,6 +481,7 @@ gamesRouter.post(
   validateBody(expenseInputSchema),
   asyncHandler(async (req, res) => {
     const gameId = String(req.params.id);
+    await assertGameOpen(gameId);
     await findGameOrThrow(gameId);
     const input = req.body as ExpenseInput;
 
@@ -457,6 +516,7 @@ gamesRouter.patch(
   requireAdmin,
   asyncHandler(async (req, res) => {
     const gameId = String(req.params.id);
+    await assertGameOpen(gameId);
     const expenseId = String(req.params.expenseId);
 
     const existing = await prisma.expense.findUnique({ where: { id: expenseId } });
@@ -509,6 +569,7 @@ gamesRouter.delete(
   requireAdmin,
   asyncHandler(async (req, res) => {
     const gameId = String(req.params.id);
+    await assertGameOpen(gameId);
     const expenseId = String(req.params.expenseId);
 
     const existing = await prisma.expense.findUnique({ where: { id: expenseId } });

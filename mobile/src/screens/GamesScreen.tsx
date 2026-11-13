@@ -81,11 +81,20 @@ export function GamesScreen() {
                       {game.location ? ` · ${game.location}` : ''}
                     </Text>
                   </View>
+                  {/*
+                    One slot, so it carries whatever is not already said in the
+                    card below. An imbalance is spelled out there in rupees, so
+                    the badge goes to the thing nothing else mentions: that the
+                    night is waiting to be called. Only an admin can call it,
+                    so only an admin is nudged.
+                  */}
                   {!game.complete ? (
                     <Badge label="In play" tone="felt" icon="ellipse" />
-                  ) : game.balanced ? null : (
+                  ) : isAdmin && game.endedAt === null ? (
+                    <Badge label="Ready to end" tone="win" icon="flag-outline" />
+                  ) : !game.balanced ? (
                     <Badge label="Check numbers" tone="warn" icon="alert-circle-outline" />
-                  )}
+                  ) : null}
                 </View>
 
                 <View style={styles.stats}>

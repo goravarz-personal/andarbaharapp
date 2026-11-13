@@ -63,6 +63,11 @@ model Game {
   title       String?
   location    String?
   notes       String?
+  /// When the admin called it a night. Null while it is still being played.
+  /// Everyone having cashed out is what ALLOWS this to be set; setting it is
+  /// what makes the night final, and nothing about it can change until it is
+  /// reopened.
+  endedAt     DateTime?
   createdById String
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt

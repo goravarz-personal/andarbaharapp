@@ -195,6 +195,16 @@ export class ApiClient {
     return this.request<{ game: Game }>(`/games/${id}`, { method: 'PATCH', body });
   }
 
+  /** Calling it a night. Refused while anyone is still at the table. */
+  endGame(id: string) {
+    return this.request<{ game: Game }>(`/games/${id}/end`, { method: 'POST' });
+  }
+
+  /** Opening it back up, because a number was wrong. */
+  reopenGame(id: string) {
+    return this.request<{ game: Game }>(`/games/${id}/reopen`, { method: 'POST' });
+  }
+
   deleteGame(id: string) {
     return this.request<{ deleted: boolean }>(`/games/${id}`, { method: 'DELETE' });
   }

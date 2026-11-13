@@ -165,9 +165,13 @@ winner, and nothing on anyone's record. Once everyone is out, the app checks
 the chips add up, names whoever won the most, and says what they owe each
 person who bought food.
 
-6. The button at the bottom turns into **Send the summary**. Tap it, read what
-   it wrote, and **Send to the group** — WhatsApp opens with the whole thing
-   typed out, you pick the group and hit send.
+6. Once the last person has cashed out, the button turns into **End the
+   night**. That freezes the numbers — no more buy-ins, cash-outs or costs —
+   so do it when the cards are actually away. Got something wrong? **Reopen
+   the night**, fix it, end it again.
+7. Then **Send the summary**. Tap it, read what it wrote, and **Send to the
+   group** — WhatsApp opens with the whole thing typed out, you pick the group
+   and hit send.
 
 The app never sends anything by itself. It writes the message; you send it. The
 only way round that is a verified Meta business account with per-message

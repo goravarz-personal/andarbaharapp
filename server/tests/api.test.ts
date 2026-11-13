@@ -471,6 +471,138 @@ describe('games', () => {
   });
 });
 
+describe('calling it a night', () => {
+  async function tableWithOneStillIn() {
+    const created = await request(app)
+      .post('/api/games')
+      .set(auth(adminToken))
+      .send({ playedOn: new Date().toISOString() })
+      .expect(201);
+    const gameId = created.body.game.id;
+
+    const seats: string[] = [];
+    for (const player of [ravi, meera]) {
+      const seated = await request(app)
+        .post(`/api/games/${gameId}/players`)
+        .set(auth(adminToken))
+        .send({ userId: player.id, buyIn: rs(1000) })
+        .expect(201);
+      seats.push(
+        seated.body.game.players.find((p: { userId: string }) => p.userId === player.id).id,
+      );
+    }
+    return { gameId, seats: seats as [string, string] };
+  }
+
+  it('will not end a night somebody is still sitting at, and says who', async () => {
+    const { gameId, seats } = await tableWithOneStillIn();
+    await request(app)
+      .post(`/api/games/${gameId}/players/${seats[0]}/cash-out`)
+      .set(auth(adminToken))
+      .send({ amount: rs(2000) })
+      .expect(200);
+
+    const refused = await request(app)
+      .post(`/api/games/${gameId}/end`)
+      .set(auth(adminToken))
+      .expect(409);
+    // Naming them is the difference between a complaint and an instruction.
+    expect(refused.body.error.message).toContain(meera.displayName);
+
+    const still = await request(app).get(`/api/games/${gameId}`).set(auth(adminToken)).expect(200);
+    expect(still.body.game.endedAt).toBeNull();
+  });
+
+  it('ends once the last player cashes out', async () => {
+    const { gameId, seats } = await tableWithOneStillIn();
+    for (const seatId of seats) {
+      await request(app)
+        .post(`/api/games/${gameId}/players/${seatId}/cash-out`)
+        .set(auth(adminToken))
+        .send({ amount: rs(1000) })
+        .expect(200);
+    }
+
+    const ended = await request(app)
+      .post(`/api/games/${gameId}/end`)
+      .set(auth(adminToken))
+      .expect(200);
+    expect(ended.body.game.endedAt).toBeTruthy();
+
+    // And not twice.
+    await request(app).post(`/api/games/${gameId}/end`).set(auth(adminToken)).expect(409);
+  });
+
+  it('refuses a night nobody played', async () => {
+    const created = await request(app)
+      .post('/api/games')
+      .set(auth(adminToken))
+      .send({ playedOn: new Date().toISOString() })
+      .expect(201);
+    await request(app)
+      .post(`/api/games/${created.body.game.id}/end`)
+      .set(auth(adminToken))
+      .expect(400);
+  });
+
+  it('freezes the night once it is over', async () => {
+    const { gameId, seats } = await tableWithOneStillIn();
+    for (const seatId of seats) {
+      await request(app)
+        .post(`/api/games/${gameId}/players/${seatId}/cash-out`)
+        .set(auth(adminToken))
+        .send({ amount: rs(1000) })
+        .expect(200);
+    }
+    await request(app).post(`/api/games/${gameId}/end`).set(auth(adminToken)).expect(200);
+
+    // Everything that would move a number is closed off.
+    const attempts: Array<['post' | 'patch' | 'delete', string, Record<string, unknown>?]> = [
+      ['patch', `/api/games/${gameId}`, { title: 'different now' }],
+      ['post', `/api/games/${gameId}/players`, { userId: admin.id, buyIn: rs(500) }],
+      ['post', `/api/games/${gameId}/players/${seats[0]}/buy-ins`, { amount: rs(500) }],
+      ['delete', `/api/games/${gameId}/players/${seats[0]}/cash-out`],
+      ['patch', `/api/games/${gameId}/players/${seats[0]}`, { isBanker: true }],
+      ['delete', `/api/games/${gameId}/players/${seats[0]}`],
+      ['post', `/api/games/${gameId}/expenses`, { type: 'DINNER', amount: rs(100), paidById: ravi.id }],
+    ];
+    for (const [method, path, body] of attempts) {
+      const response = await request(app)[method](path).set(auth(adminToken)).send(body ?? {});
+      expect({ method, path, status: response.status }).toEqual({ method, path, status: 409 });
+    }
+  });
+
+  it('reopens, so a wrong number can still be fixed', async () => {
+    const { gameId, seats } = await tableWithOneStillIn();
+    for (const seatId of seats) {
+      await request(app)
+        .post(`/api/games/${gameId}/players/${seatId}/cash-out`)
+        .set(auth(adminToken))
+        .send({ amount: rs(1000) })
+        .expect(200);
+    }
+    await request(app).post(`/api/games/${gameId}/end`).set(auth(adminToken)).expect(200);
+
+    const reopened = await request(app)
+      .post(`/api/games/${gameId}/reopen`)
+      .set(auth(adminToken))
+      .expect(200);
+    expect(reopened.body.game.endedAt).toBeNull();
+
+    // And the correction goes through.
+    await request(app)
+      .delete(`/api/games/${gameId}/players/${seats[0]}/cash-out`)
+      .set(auth(adminToken))
+      .expect(200);
+  });
+
+  it('keeps both ends of it away from players', async () => {
+    const { gameId } = await tableWithOneStillIn();
+    await request(app).post(`/api/games/${gameId}/end`).set(auth(playerToken)).expect(403);
+    await request(app).post(`/api/games/${gameId}/reopen`).set(auth(playerToken)).expect(403);
+  });
+});
+
 describe('only an admin can change a game', () => {
   /**
    * Walks every route the games router actually exposes rather than a list
