@@ -1,6 +1,7 @@
 import React from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
-import { useRoute, type RouteProp } from '@react-navigation/native';
+import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import { Screen } from '../components/Screen';
 import { Avatar, Button, Card, ErrorNotice, LoadingView, SectionHeader } from '../components';
@@ -8,6 +9,7 @@ import { useApiQuery } from '../state/useApiQuery';
 import { buildNightSummary, canSummarize } from '../utils/summary';
 import { sendViaWhatsApp } from '../utils/whatsapp';
 import { displayPhone } from '../utils/phone';
+import { formatMoney } from '../utils/money';
 import { notify } from '../utils/dialog';
 import { colors, font, radius, spacing } from '../theme';
 import type { RootStackParamList } from '../navigation/types';
@@ -22,6 +24,7 @@ import type { Game, Player } from '../api/types';
  */
 export function ShareNightScreen() {
   const route = useRoute<RouteProp<RootStackParamList, 'ShareNight'>>();
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { gameId } = route.params;
 
   const { data, loading, error, refetch } = useApiQuery<{ game: Game }>(
@@ -44,16 +47,63 @@ export function ShareNightScreen() {
   if (!game) return null;
 
   if (!canSummarize(game)) {
+    // Naming them is the point: "2 still in" tells an admin there is a problem,
+    // not which two people to go and cash out.
+    const stillIn = game.players.filter((seat) => seat.isPlaying);
     return (
-      <Screen>
+      <Screen
+        footer={
+          <Button
+            label="Back to the table"
+            icon="arrow-back"
+            variant="secondary"
+            onPress={() => navigation.goBack()}
+          />
+        }
+      >
         <Card style={styles.waiting}>
           <Ionicons name="time-outline" size={22} color={colors.feltSoft} />
-          <Text style={styles.waitingText}>
-            {game.players.length === 0
-              ? 'Nobody has played this night yet.'
-              : `${game.playersStillIn} still at the table. The summary is ready once everyone has cashed out — nothing is settled until then.`}
-          </Text>
+          <View style={styles.waitingBody}>
+            <Text style={styles.waitingTitle}>
+              {game.players.length === 0 ? 'Nobody is at this table yet' : 'The night is not over'}
+            </Text>
+            <Text style={styles.waitingText}>
+              {game.players.length === 0
+                ? 'Seat the players first — there is nothing to write up yet.'
+                : 'Nothing is settled until the last player stands up: no net, no winner, and nobody carrying the dinner bill. Cash these out and the summary is ready.'}
+            </Text>
+          </View>
         </Card>
+
+        {stillIn.length > 0 ? (
+          <>
+            <SectionHeader title={`Still at the table (${stillIn.length})`} />
+            <Card padded={false}>
+              {stillIn.map((seat, index) => (
+                <Pressable
+                  key={seat.id}
+                  onPress={() =>
+                    navigation.navigate('Seat', { gameId: game.id, seatId: seat.id })
+                  }
+                  style={({ pressed }) => [
+                    styles.personRow,
+                    index < stillIn.length - 1 && styles.divided,
+                    pressed && styles.pressed,
+                  ]}
+                >
+                  <Avatar name={seat.displayName} color={seat.avatarColor} size={32} />
+                  <View style={styles.personBody}>
+                    <Text style={styles.personName}>{seat.displayName}</Text>
+                    <Text style={styles.personPhone}>
+                      {formatMoney(seat.buyIn)} in, not cashed out
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={16} color={colors.inkFaint} />
+                </Pressable>
+              ))}
+            </Card>
+          </>
+        ) : null}
       </Screen>
     );
   }
@@ -184,6 +234,8 @@ const styles = StyleSheet.create({
   pressed: { opacity: 0.6, backgroundColor: colors.surfaceMuted },
 
   waiting: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing(2.5) },
-  waitingText: { ...font.small, color: colors.inkMuted, flex: 1, lineHeight: 20 },
+  waitingBody: { flex: 1, gap: spacing(1.5) },
+  waitingTitle: { ...font.bodyStrong, color: colors.ink },
+  waitingText: { ...font.small, color: colors.inkMuted, lineHeight: 20 },
   muted: { ...font.small, color: colors.inkMuted, lineHeight: 20 },
 });

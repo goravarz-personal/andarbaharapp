@@ -110,19 +110,43 @@ export function GameDetailScreen() {
       onRefresh={refetch}
       refreshing={refreshing}
       footer={
-        !isAdmin ? undefined : game.complete && game.players.length > 0 ? (
-          <Button
-            label="Send the summary"
-            icon="logo-whatsapp"
-            onPress={() => navigation.navigate('ShareNight', { gameId: game.id })}
-          />
-        ) : (
-          <Button
-            label="Add a player"
-            icon="person-add-outline"
-            onPress={() => navigation.navigate('AddToGame', { gameId: game.id })}
-          />
-        )
+        // Both, always. Hiding the summary until the night was finished meant
+        // an admin looking at a table still in play saw no WhatsApp button at
+        // all and nothing saying why. The order follows what the night needs
+        // next; the share screen says who is holding it up.
+        isAdmin ? (
+          <View style={styles.actions}>
+            {game.complete && game.players.length > 0 ? (
+              <>
+                <Button
+                  label="Send the summary"
+                  icon="logo-whatsapp"
+                  onPress={() => navigation.navigate('ShareNight', { gameId: game.id })}
+                />
+                <Button
+                  label="Add a player"
+                  icon="person-add-outline"
+                  variant="secondary"
+                  onPress={() => navigation.navigate('AddToGame', { gameId: game.id })}
+                />
+              </>
+            ) : (
+              <>
+                <Button
+                  label="Add a player"
+                  icon="person-add-outline"
+                  onPress={() => navigation.navigate('AddToGame', { gameId: game.id })}
+                />
+                <Button
+                  label="Send the summary"
+                  icon="logo-whatsapp"
+                  variant="secondary"
+                  onPress={() => navigation.navigate('ShareNight', { gameId: game.id })}
+                />
+              </>
+            )}
+          </View>
+        ) : undefined
       }
     >
       <Card style={styles.header}>
@@ -403,6 +427,7 @@ function MathRow({ label, value, note }: { label: string; value: string; note?: 
 }
 
 const styles = StyleSheet.create({
+  actions: { gap: spacing(2.5) },
   header: { gap: spacing(4) },
   headerTop: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing(2) },
   headerText: { flex: 1 },
